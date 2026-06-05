@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>订单文字拆分</title>
+  <script src="https://unpkg.com/@lark-base-open/js-sdk@1.2.1/dist/index.umd.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Tahoma,
+        "PingFang SC", "Microsoft Yahei", Arial, sans-serif;
+      font-size: 14px;
+      color: #1f2329;
+      background: #fff;
+      padding: 16px;
+    }
+
+    /* 深色模式 */
+    body.dark {
+      background: #252525;
+      color: #e0e0e0;
+    }
+
+    h2 {
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 14px;
+      color: inherit;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: #8f959e;
+      margin-bottom: 5px;
+    }
+    body.dark label { color: #9e9e9e; }
+
+    textarea {
+      width: 100%;
+      min-height: 90px;
+      padding: 8px 10px;
+      border: 1px solid #dee0e3;
+      border-radius: 6px;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: vertical;
+      background: #fff;
+      color: #1f2329;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: #1456f0; }
+    body.dark textarea {
+      background: #333;
+      border-color: #434343;
+      color: #e0e0e0;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    button {
+      padding: 7px 16px;
+      border-radius: 6px;
+      border: 1px solid #dee0e3;
+      font-size: 13px;
+      cursor: pointer;
+      background: #fff;
+      color: #1f2329;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    button:hover { background: #f2f3f5; }
+    button.primary {
+      background: #1456f0;
+      color: #fff;
+      border-color: transparent;
+    }
+    button.primary:hover { background: #0e48d0; }
+    button.primary:disabled {
+      background: #a0b4f7;
+      cursor: not-allowed;
+    }
+    button.ghost {
+      margin-left: auto;
+      color: #8f959e;
+      border-color: transparent;
+      background: transparent;
+    }
+    button.ghost:hover { background: #f2f3f5; }
+
+    body.dark button {
+      background: #333;
+      border-color: #434343;
+      color: #e0e0e0;
+    }
+    body.dark button:hover { background: #3a3a3a; }
+    body.dark button.primary { background: #4571e1; border-color: transparent; color: #fff; }
+    body.dark button.primary:hover { background: #3560c8; }
+    body.dark button.primary:disabled { background: #2c3e6e; }
+
+    /* 预览卡片 */
+    .card {
+      border: 1px solid #dee0e3;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 14px;
+    }
+    body.dark .card { border-color: #434343; }
+
+    .card-header {
+      padding: 8px 14px;
+      background: #f2f3f5;
+      font-size: 12px;
+      font-weight: 500;
+      color: #646a73;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #dee0e3;
+    }
+    body.dark .card-header {
+      background: #2e2e2e;
+      color: #9e9e9e;
+      border-color: #434343;
+    }
+
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 99px;
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .badge.warn { background: #fff8e1; color: #f57f17; }
+
+    .placeholder {
+      padding: 24px;
+      text-align: center;
+      color: #8f959e;
+      font-size: 13px;
+    }
+
+    .fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .field {
+      padding: 10px 14px;
+      border-bottom: 1px solid #dee0e3;
+      border-right: 1px solid #dee0e3;
+    }
+    .field.full { grid-column: 1 / -1; border-right: none; }
+    .field:nth-child(even):not(.full) { border-right: none; }
+    .field:last-child,
+    .field:nth-last-child(2):not(.full) { border-bottom: none; }
+
+    body.dark .field { border-color: #3a3a3a; }
+
+    .field-label {
+      font-size: 10px;
+      color: #8f959e;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 3px;
+    }
+    .field-value {
+      font-size: 13px;
+      font-weight: 500;
+      color: #1f2329;
+      word-break: break-all;
+    }
+    body.dark .field-value { color: #e0e0e0; }
+    .field-value.empty { color: #c9cdd4; font-weight: 400; font-style: italic; }
+    .field-value.muted { color: #8f959e; font-weight: 400; }
+
+    /* 消息提示 */
+    .msg {
+      margin-top: 12px;
+      padding: 9px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+    .msg.error { background: #fff0f0; color: #d32f2f; display: flex; }
+    .msg.success { background: #e8f5e9; color: #2e7d32; display: flex; }
+    body.dark .msg.error { background: #3b1c1c; color: #ef9a9a; }
+    body.dark .msg.success { background: #1b2e1b; color: #a5d6a7; }
+
+    /* 选表提示 */
+    .table-select {
+      margin-top: 10px;
+      display: none;
+    }
+    .table-select label { margin-bottom: 5px; }
+    select {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid #dee0e3;
+      border-radius: 6px;
+      font-size: 13px;
+      background: #fff;
+      color: #1f2329;
+      font-family: inherit;
+      outline: none;
+    }
+    body.dark select {
+      background: #333;
+      border-color: #434343;
+      color: #e0e0e0;
+    }
+
+    .divider { height: 1px; background: #dee0e3; margin: 14px 0; }
+    body.dark .divider { background: #3a3a3a; }
+  </style>
+</head>
+<body>
+  <h2>📦 订单文字拆分</h2>
+
+  <label>粘贴订单文字（支持中英文逗号）</label>
+  <textarea id="input" placeholder="例：陈文永，18825732781-2867，广东省 东莞市 虎门镇北栅东方大厦，12100103000078 风轮1个 自仓库发&#10;例：杜叶锋，18466820784-4500，上海 上海市 金山区，12222200001460 支架1个 佛山发 顺丰陆运到付"></textarea>
+
+  <div class="btn-row">
+    <button onclick="doParse()">拆分预览</button>
+    <button class="primary" id="confirmBtn" onclick="doConfirm()" disabled>✓ 写入个人表</button>
+    <button class="ghost" onclick="doReset()">清空</button>
+  </div>
+
+  <!-- 选表下拉（初始化时填充） -->
+  <div class="table-select" id="tableSelectWrap">
+    <div class="divider"></div>
+    <label>写入到哪张表？</label>
+    <select id="tableSelect"></select>
+  </div>
+
+  <!-- 错误/成功提示 -->
+  <div class="msg" id="msgBox"></div>
+
+  <!-- 预览卡片 -->
+  <div class="card" id="card" style="margin-top:14px">
+    <div class="card-header">
+      <span>拆分预览</span>
+      <span class="badge" id="badge" style="display:none"></span>
+    </div>
+    <div class="placeholder" id="placeholder">请在上方输入文字后点击「拆分预览」</div>
+    <div class="fields" id="fields" style="display:none">
+      <div class="field"><div class="field-label">收货姓名</div><div class="field-value" id="f-name"></div></div>
+      <div class="field"><div class="field-label">收货电话</div><div class="field-value" id="f-phone"></div></div>
+      <div class="field full"><div class="field-label">收货地址</div><div class="field-value" id="f-addr"></div></div>
+      <div class="field full"><div class="field-label">商品编码</div><div class="field-value" id="f-code"></div></div>
+      <div class="field"><div class="field-label">商品类型</div><div class="field-value" id="f-type"></div></div>
+      <div class="field"><div class="field-label">商品数量</div><div class="field-value" id="f-qty"></div></div>
+      <div class="field"><div class="field-label">申请渠道</div><div class="field-value" id="f-channel"></div></div>
+      <div class="field"><div class="field-label">物流方式 <span style="font-size:10px;color:#c9cdd4">(选填)</span></div><div class="field-value muted" id="f-logistics"></div></div>
+    </div>
+  </div>
+
+  <script>
+    // ── 飞书 SDK 初始化 ──────────────────────────
+    let bitable_sdk = null;
+    let tableList = [];   // [{id, name}]
+    let parsed = null;
+
+    async function initSDK() {
+      try {
+        // SDK 挂载在 window.bitable
+        bitable_sdk = window.bitable;
+        if (!bitable_sdk) return;
+
+        // 主题适配
+        const theme = await bitable_sdk.bridge.getTheme();
+        applyTheme(theme);
+        bitable_sdk.bridge.onThemeChange(e => applyTheme(e.data.theme));
+
+        // 获取所有表
+        const metaList = await bitable_sdk.base.getTableMetaList();
+        tableList = metaList.map(m => ({ id: m.id, name: m.name }));
+
+        // 填充下拉
+        const sel = document.getElementById('tableSelect');
+        tableList.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.id;
+          opt.textContent = t.name;
+          sel.appendChild(opt);
+        });
+
+        if (tableList.length > 0) {
+          document.getElementById('tableSelectWrap').style.display = 'block';
+        }
+      } catch (e) {
+        // 不在飞书环境内（比如直接打开网页），静默处理
+        console.log('非飞书环境，SDK 未加载');
+      }
+    }
+
+    function applyTheme(theme) {
+      if (theme === 'DARK') {
+        document.body.classList.add('dark');
+      } else {
+        document.body.classList.remove('dark');
+      }
+    }
+
+    // ── 拆分逻辑 ─────────────────────────────────
+    function parseOrder(raw) {
+      if (!raw || !raw.trim()) return { ok: false, error: '请先输入订单文字' };
+
+      const normalized = raw.trim().replace(/，/g, ',');
+      const parts = normalized.split(',');
+
+      if (parts.length < 4) {
+        return { ok: false, error: `格式不符：需要至少 4 个逗号分隔段，当前只有 ${parts.length} 段` };
+      }
+
+      const name  = parts[0].trim();
+      const phone = parts[1].trim();
+      const addr  = parts[2].trim();
+      const rest  = parts.slice(3).join(',').trim();
+
+      const segs = rest.split(/\s+/);
+      if (segs.length < 3) {
+        return { ok: false, error: `商品信息段格式不符，需要"编码 商品描述 渠道发"三段空格分隔` };
+      }
+
+      const code = segs[0].trim();
+
+      const productRaw = segs[1].trim();
+      const numMatch = productRaw.match(/^([^\d]+)(\d+)/);
+      let productType = productRaw, qty = '';
+      if (numMatch) { productType = numMatch[1].trim(); qty = numMatch[2].trim(); }
+
+      const channelRaw = segs[2].trim();
+      const faIdx = channelRaw.lastIndexOf('发');
+      const channel = faIdx !== -1 ? channelRaw.substring(0, faIdx).trim() : channelRaw;
+
+      const logistics = segs.length >= 4 ? segs.slice(3).join('') : '';
+
+      const missing = [];
+      if (!name) missing.push('收货姓名');
+      if (!phone) missing.push('收货电话');
+      if (!addr) missing.push('收货地址');
+      if (!code) missing.push('商品编码');
+      if (!productType) missing.push('商品类型');
+      if (!qty) missing.push('商品数量');
+      if (!channel) missing.push('申请渠道');
+
+      if (missing.length > 0) {
+        return { ok: false, error: `以下字段未能识别：${missing.join('、')}` };
+      }
+
+      return { ok: true, data: { name, phone, addr, code, productType, qty, channel, logistics } };
+    }
+
+    // ── UI 操作 ───────────────────────────────────
+    function showMsg(type, text) {
+      const box = document.getElementById('msgBox');
+      box.className = 'msg ' + type;
+      box.textContent = text;
+    }
+    function hideMsg() {
+      document.getElementById('msgBox').className = 'msg';
+    }
+
+    function setField(id, val, muted) {
+      const el = document.getElementById(id);
+      el.className = 'field-value' + (muted ? ' muted' : '') + (!val ? ' empty' : '');
+      el.textContent = val || (muted ? '无' : '未识别');
+    }
+
+    function doParse() {
+      hideMsg();
+      const raw = document.getElementById('input').value;
+      const result = parseOrder(raw);
+
+      if (!result.ok) {
+        showMsg('error', result.error);
+        return;
+      }
+
+      const d = result.data;
+      parsed = d;
+
+      setField('f-name', d.name);
+      setField('f-phone', d.phone);
+      setField('f-addr', d.addr);
+      setField('f-code', d.code);
+      setField('f-type', d.productType);
+      setField('f-qty', d.qty);
+      setField('f-channel', d.channel);
+      setField('f-logistics', d.logistics, true);
+
+      const allOk = [d.name, d.phone, d.addr, d.code, d.productType, d.qty, d.channel].every(Boolean);
+      const badge = document.getElementById('badge');
+      badge.style.display = 'inline';
+      badge.className = 'badge' + (allOk ? '' : ' warn');
+      badge.textContent = allOk ? '识别正常' : '部分字段未识别';
+
+      document.getElementById('placeholder').style.display = 'none';
+      document.getElementById('fields').style.display = 'grid';
+      document.getElementById('confirmBtn').disabled = false;
+    }
+
+    async function doConfirm() {
+      if (!parsed) return;
+      hideMsg();
+
+      // 不在飞书环境
+      if (!bitable_sdk) {
+        showMsg('success', '演示模式：数据识别成功（请在飞书多维表格内使用以写入数据）');
+        return;
+      }
+
+      const sel = document.getElementById('tableSelect');
+      const tableId = sel.value;
+      if (!tableId) {
+        showMsg('error', '请先选择要写入的表');
+        return;
+      }
+
+      try {
+        document.getElementById('confirmBtn').disabled = true;
+        document.getElementById('confirmBtn').textContent = '写入中...';
+
+        const table = await bitable_sdk.base.getTableById(tableId);
+        const fields = {
+          '收货姓名': parsed.name,
+          '收货电话': parsed.phone,
+          '收货地址': parsed.addr,
+          '商品编码': parsed.code,
+          '商品类型': parsed.productType,
+          '商品数量': parsed.qty,
+          '申请渠道': parsed.channel,
+        };
+        if (parsed.logistics) fields['物流方式'] = parsed.logistics;
+
+        await table.addRecord({ fields });
+
+        showMsg('success', `✓ 已写入「${sel.options[sel.selectedIndex].text}」— ${parsed.name} 的订单`);
+        doReset();
+      } catch (err) {
+        showMsg('error', `写入失败：${err.message}（请确认表格字段名与工具一致）`);
+        document.getElementById('confirmBtn').disabled = false;
+        document.getElementById('confirmBtn').textContent = '✓ 写入个人表';
+      }
+    }
+
+    function doReset() {
+      document.getElementById('input').value = '';
+      document.getElementById('placeholder').style.display = 'block';
+      document.getElementById('fields').style.display = 'none';
+      document.getElementById('badge').style.display = 'none';
+      document.getElementById('confirmBtn').disabled = true;
+      document.getElementById('confirmBtn').textContent = '✓ 写入个人表';
+      parsed = null;
+    }
+
+    // Ctrl/Cmd + Enter 快速拆分
+    document.getElementById('input').addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') doParse();
+    });
+
+    // 启动
+    initSDK();
+  </script>
+</body>
+</html>
