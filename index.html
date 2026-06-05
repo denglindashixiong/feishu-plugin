@@ -180,16 +180,16 @@
       gap: 0;
     }
     .field {
-      padding: 8px 10px;
+      padding: 6px 10px;
       border-bottom: 1px solid #dee0e3;
       border-right: 1px solid #dee0e3;
-      min-height: 54px;
+      min-height: 44px;
     }
     body.dark .field { border-color: #3a3a3a; }
     .field.full { grid-column: 1 / -1; border-right: none; }
     .field:nth-child(even):not(.full) { border-right: none; }
-    .field:last-child,
-    .field:nth-last-child(2):not(.full) { border-bottom: none; }
+    .fields .field:nth-last-child(-n+2):not(.full) { border-bottom: none; }
+    .fields .field.full:last-child { border-bottom: none; }
 
     .field-label {
       font-size: 10px;
@@ -232,12 +232,7 @@
     .divider { height: 1px; background: #dee0e3; margin: 12px 0; }
     body.dark .divider { background: #3a3a3a; }
 
-    @media (max-width: 520px) {
-      .fields { grid-template-columns: 1fr; }
-      .field.full { grid-column: auto; }
-      .field:nth-child(even):not(.full) { border-right: 1px solid #dee0e3; }
-      .field:last-child, .field:nth-last-child(2):not(.full) { border-bottom: 1px solid #dee0e3; }
-      body.dark .field:nth-child(even):not(.full) { border-right: 1px solid #3a3a3a; }
+    @media (max-width: 360px) {
       .ghost { margin-left: 0; }
     }
   </style>
@@ -275,16 +270,16 @@
       <div class="field"><div class="field-label">收货姓名</div><div class="field-value" id="f-name"></div></div>
       <div class="field"><div class="field-label">收货电话</div><div class="field-value" id="f-phone"></div></div>
       <div class="field full"><div class="field-label">地址</div><div class="field-value" id="f-addr"></div></div>
-      <div class="field full"><div class="field-label">商品编码</div><div class="field-value" id="f-code"></div></div>
+      <div class="field"><div class="field-label">商品编码</div><div class="field-value" id="f-code"></div></div>
       <div class="field"><div class="field-label">商品类型</div><div class="field-value" id="f-type"></div></div>
       <div class="field"><div class="field-label">物品数量</div><div class="field-value" id="f-qty"></div></div>
       <div class="field"><div class="field-label">申请渠道</div><div class="field-value" id="f-channel"></div></div>
       <div class="field"><div class="field-label">家商用</div><div class="field-value" id="f-house"></div></div>
       <div class="field"><div class="field-label">微信单</div><div class="field-value" id="f-wechat"></div></div>
       <div class="field"><div class="field-label">填表人</div><div class="field-value" id="f-user"></div></div>
-      <div class="field full"><div class="field-label">物流备注</div><div class="field-value muted" id="f-logistics"></div></div>
       <div class="field"><div class="field-label">申请日期（年月日）</div><div class="field-value" id="f-date"></div></div>
-      <div class="field"><div class="field-label">申请日期（年月日时分秒）</div><div class="field-value" id="f-datetime"></div></div>
+      <div class="field"><div class="field-label">申请日期（时分秒）</div><div class="field-value" id="f-datetime"></div></div>
+      <div class="field"><div class="field-label">物流备注</div><div class="field-value muted" id="f-logistics"></div></div>
     </div>
   </div>
 
@@ -377,7 +372,7 @@
 
     async function refreshActiveTable() {
       try {
-        currentTable = await bitable.base.getTable(TARGET_TABLE_ID);
+        currentTable = await bitable.base.getTableById(TARGET_TABLE_ID);
         const meta = await currentTable.getMeta();
         currentTableName = meta?.name || '个人表';
         $('sdkDesc').textContent = `已固定连接到：${currentTableName}（${meta?.id || TARGET_TABLE_ID}）`;
@@ -402,53 +397,89 @@
 
     async function refreshCurrentUser() {
       try {
-        let userName = '';
-
-        // 1) 尝试任何可能存在的“姓名/昵称”类接口
-        const maybeMethods = [
-          'getUserInfo',
-          'getCurrentUserInfo',
-          'getBaseUserInfo',
-          'getUserProfile',
-        ];
-
-        for (const m of maybeMethods) {
-          const fn = bitable?.bridge?.[m];
-          if (typeof fn === 'function') {
-            try {
-              const res = await fn.call(bitable.bridge);
-              if (typeof res === 'string' && res.trim()) {
-                userName = res.trim();
-                break;
-              }
-              if (res && typeof res === 'object') {
-                userName = res.name || res.nickName || res.nickname || res.displayName || res.realName || res.userName || res.fullName || '';
-                if (userName) break;
-              }
-            } catch (_) {}
-          }
-        }
-
-        // 2) 回退到 Base UserId（官方明确支持，且在侧边栏等点位唯一）
-        if (!userName) {
-          try {
-            userName = await bitable.bridge.getBaseUserId();
-          } catch (_) {}
-        }
-
-        // 3) 再回退到 UserId
-        if (!userName) {
-          try {
-            userName = await bitable.bridge.getUserId();
-          } catch (_) {}
-        }
-
-        currentUserName = String(userName || '').trim();
+        currentUserName = await resolveFillerName();
         $('f-user').textContent = currentUserName || '未识别';
         log('当前填表人：' + (currentUserName || '未识别'));
       } catch (e) {
         log('读取当前用户失败：' + (e?.message || e));
       }
+    }
+
+    // 从「创建人」字段反查当前登录用户姓名；再回退到历史「填表人」记录
+    async function resolveFillerName() {
+      if (!currentTable || !bitable?.bridge) return '';
+
+      let baseUserId = '';
+      try {
+        baseUserId = await bitable.bridge.getBaseUserId();
+      } catch (_) {
+        try { baseUserId = await bitable.bridge.getUserId(); } catch (_) {}
+      }
+      if (!baseUserId) return '';
+
+      try {
+        const cached = await bitable.bridge.getData('fillerName:' + baseUserId);
+        if (typeof cached === 'string' && cached.trim()) return cached.trim();
+      } catch (_) {}
+
+      const metaList = await currentTable.getFieldMetaList();
+      const createdMeta = metaList.find(f => f.type === 1003 || f.type === 'CreatedUser');
+      const fillerMeta = metaList.find(f => f.name === '填表人');
+
+      let recordIds = [];
+      try {
+        recordIds = await currentTable.getRecordIdList();
+      } catch (_) {
+        return '';
+      }
+
+      const recentIds = recordIds.slice(-120).reverse();
+
+      if (createdMeta) {
+        const createdField = await currentTable.getField(createdMeta.id);
+        for (const rid of recentIds) {
+          try {
+            const users = await createdField.getValue(rid);
+            const list = Array.isArray(users) ? users : (users ? [users] : []);
+            const me = list.find(u => u && u.id === baseUserId);
+            if (me?.name) {
+              await cacheFillerName(baseUserId, me.name);
+              return me.name;
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (fillerMeta) {
+        const fillerField = await currentTable.getField(fillerMeta.id);
+        for (const rid of recentIds) {
+          try {
+            const val = await fillerField.getValue(rid);
+            const text = typeof val === 'string' ? val.trim() : '';
+            if (!text) continue;
+            if (createdMeta) {
+              const createdField = await currentTable.getField(createdMeta.id);
+              const users = await createdField.getValue(rid);
+              const list = Array.isArray(users) ? users : (users ? [users] : []);
+              if (list.some(u => u && u.id === baseUserId)) {
+                await cacheFillerName(baseUserId, text);
+                return text;
+              }
+            } else {
+              await cacheFillerName(baseUserId, text);
+              return text;
+            }
+          } catch (_) {}
+        }
+      }
+
+      return '';
+    }
+
+    async function cacheFillerName(baseUserId, name) {
+      try {
+        await bitable.bridge.setData('fillerName:' + baseUserId, name);
+      } catch (_) {}
     }
 
     function pad2(n) { return String(n).padStart(2, '0'); }
@@ -542,14 +573,18 @@
         }
 
         if (!channel && t.endsWith('发')) {
-          const candidate = t.slice(0, -1).trim();
+          let candidate = t.slice(0, -1).trim();
+          if (candidate === '自仓库') candidate = '自仓库';
+          if (candidate && CHANNEL_OPTIONS.includes(candidate)) {
+            channel = candidate;
+            continue;
+          }
           if (candidate) {
-            channel = candidate; // 例如：佛山发 -> 佛山
+            channel = candidate;
             continue;
           }
         }
 
-        // 已经识别到渠道之后，剩下的都算物流备注
         if (channel) logisticsTokens.push(t);
       }
 
@@ -590,47 +625,32 @@
       el.textContent = val || (muted ? '无' : '未识别');
     }
 
-    function findFieldIdByKeywords(keywords, options = {}) {
-      const names = Object.keys(fieldMetaMap);
-      const exact = options.exact || [];
-      for (const e of exact) {
-        if (fieldMetaMap[e]) return fieldMetaMap[e];
+    function resolveDateOnlyFieldName() {
+      const exact = ['申请日期（年月日）', '申请日期td（年月日）'];
+      for (const n of exact) {
+        if (fieldMetaMap[n]) return n;
       }
-      for (const k of keywords) {
-        for (const name of names) {
-          if (name === k) return fieldMetaMap[name];
-        }
-      }
-      for (const k of keywords) {
-        for (const name of names) {
-          if (name.includes(k)) return fieldMetaMap[name];
-        }
+      for (const name of Object.keys(fieldMetaMap)) {
+        if (name.includes('年月日') && !name.includes('时分秒')) return name;
       }
       return '';
     }
 
-    function detectFieldIds() {
-      return {
-        name: findFieldIdByKeywords(['收货姓名']),
-        phone: findFieldIdByKeywords(['收货电话']),
-        addr: findFieldIdByKeywords(['地址']),
-        code: findFieldIdByKeywords(['商品编码']),
-        type: findFieldIdByKeywords(['商品类型']),
-        qty: findFieldIdByKeywords(['物品数量']),
-        channel: findFieldIdByKeywords(['申请渠道']),
-        logistics: findFieldIdByKeywords(['物流备注']),
-        house: findFieldIdByKeywords(['家商用']),
-        wechat: findFieldIdByKeywords(['微信单']),
-        user: findFieldIdByKeywords(['填表人']),
-        date: findFieldIdByKeywords(['年月日'], { exact: ['申请日期（年月日）', '申请日期td（年月日）', '申请日期（年月日） '] }),
-        datetime: findFieldIdByKeywords(['时分秒'], { exact: ['申请日期（年月日时分秒）'] })
-      };
+    function resolveDateTimeFieldName() {
+      const exact = ['申请日期（年月日时分秒）'];
+      for (const n of exact) {
+        if (fieldMetaMap[n]) return n;
+      }
+      for (const name of Object.keys(fieldMetaMap)) {
+        if (name.includes('时分秒')) return name;
+      }
+      return '';
     }
 
-    function optionValue(fieldType, text) {
-      if (fieldType === 3) return { text }; // 单选
-      if (fieldType === 4) return [{ text }]; // 多选
-      return text;
+    async function createFieldCell(fieldName, value) {
+      if (value === undefined || value === null || value === '') return null;
+      const field = await currentTable.getField(fieldName);
+      return await field.createCell(value);
     }
 
     function setPreviewValues(data) {
@@ -694,70 +714,93 @@
 
       const now = new Date();
       const { todayMs, nowMs } = formatDateParts(now);
-      const ids = detectFieldIds();
 
       try {
         $('confirmBtn').disabled = true;
         $('confirmBtn').textContent = '写入中…';
 
-        const fieldMetaList = await currentTable.getFieldMetaList();
-        const tableFieldTypeMap = {};
-        for (const f of fieldMetaList) tableFieldTypeMap[f.name] = f.type;
+        if (!currentUserName) {
+          currentUserName = await resolveFillerName();
+          $('f-user').textContent = currentUserName || '未识别';
+        }
 
-        const fields = {};
-        const add = (fieldId, value) => {
-          if (!fieldId) return;
-          fields[fieldId] = value;
+        const cells = [];
+        const pushCell = async (fieldName, value) => {
+          try {
+            const cell = await createFieldCell(fieldName, value);
+            if (cell) {
+              cells.push(cell);
+              log(`  ✓ ${fieldName} = ${JSON.stringify(value)}`);
+            }
+          } catch (e) {
+            log(`  ⚠ 字段「${fieldName}」写入跳过：${e?.message || e}`);
+          }
         };
 
-        // 基础字段
-        add(ids.name, parsed.name);
-        add(ids.phone, parsed.phone);
-        add(ids.addr, parsed.addr);
-        add(ids.code, parsed.code);
-        add(ids.type, parsed.productType);
-        if (ids.qty) fields[ids.qty] = Number(parsed.qty) || 0;
-        if (ids.logistics) add(ids.logistics, parsed.logistics);
+        log('开始写入（createCell 模式，自动适配单选/日期等类型）…');
 
-        // 申请渠道：单选
-        if (ids.channel) {
-          const fieldName = Object.keys(fieldMetaMap).find(n => fieldMetaMap[n] === ids.channel) || '';
-          const fType = tableFieldTypeMap[fieldName];
-          fields[ids.channel] = optionValue(fType, parsed.channel);
+        await pushCell('收货姓名', parsed.name);
+        await pushCell('收货电话', parsed.phone);
+        await pushCell('地址', parsed.addr);
+        await pushCell('商品编码', parsed.code);
+        await pushCell('商品类型', parsed.productType);
+        await pushCell('物品数量', Number(parsed.qty) || 1);
+        await pushCell('申请渠道', parsed.channel);
+        if (parsed.houseCommercial) await pushCell('家商用', parsed.houseCommercial);
+        if (parsed.wechatSingle) await pushCell('微信单', parsed.wechatSingle);
+        if (parsed.logistics) await pushCell('物流备注', parsed.logistics);
+        if (currentUserName) await pushCell('填表人', currentUserName);
+
+        const dateOnlyName = resolveDateOnlyFieldName();
+        const dateTimeName = resolveDateTimeFieldName();
+        if (dateOnlyName) await pushCell(dateOnlyName, todayMs);
+        if (dateTimeName) await pushCell(dateTimeName, nowMs);
+
+        if (!cells.length) {
+          throw new Error('没有可写入的字段，请检查个人表字段名是否与插件一致');
         }
 
-        // 家商用：单选
-        if (ids.house && parsed.houseCommercial) {
-          const fieldName = Object.keys(fieldMetaMap).find(n => fieldMetaMap[n] === ids.house) || '';
-          const fType = tableFieldTypeMap[fieldName];
-          fields[ids.house] = optionValue(fType, parsed.houseCommercial);
+        log('共准备写入 ' + cells.length + ' 个字段');
+
+        const recordId = await currentTable.addRecord(cells);
+
+        // 首次使用时可能取不到姓名，写入后从「创建人」回填「填表人」
+        if (!currentUserName && fieldMetaMap['填表人']) {
+          try {
+            const metaList = await currentTable.getFieldMetaList();
+            const createdMeta = metaList.find(f => f.type === 1003 || f.type === 'CreatedUser');
+            if (createdMeta) {
+              const createdField = await currentTable.getField(createdMeta.id);
+              const users = await createdField.getValue(recordId);
+              const list = Array.isArray(users) ? users : (users ? [users] : []);
+              const name = list[0]?.name || '';
+              if (name) {
+                const fillerField = await currentTable.getField('填表人');
+                await fillerField.setValue(recordId, name);
+                currentUserName = name;
+                $('f-user').textContent = name;
+                log('已从创建人回填填表人：' + name);
+              }
+            }
+          } catch (e) {
+            log('回填填表人失败：' + (e?.message || e));
+          }
         }
 
-        // 微信单：单选
-        if (ids.wechat && parsed.wechatSingle) {
-          const fieldName = Object.keys(fieldMetaMap).find(n => fieldMetaMap[n] === ids.wechat) || '';
-          const fType = tableFieldTypeMap[fieldName];
-          fields[ids.wechat] = optionValue(fType, parsed.wechatSingle);
-        }
-
-        // 填表人：优先写入当前账号显示名；取不到则写入 BaseUserId
-        if (ids.user) {
-          fields[ids.user] = currentUserName || '';
-        }
-
-        // 日期字段：一个填当天日期，一个填当前时分秒
-        if (ids.date) fields[ids.date] = todayMs;
-        if (ids.datetime) fields[ids.datetime] = nowMs;
-
-        log('最终写入 fields：' + JSON.stringify(fields));
-
-        const recordId = await currentTable.addRecord({ fields });
         showMsg('success', `已写入固定表「${currentTableName}」，recordId：${recordId}`);
         log('写入成功，recordId=' + recordId);
+
+        if (currentUserName) {
+          try {
+            const baseUserId = await bitable.bridge.getBaseUserId();
+            await cacheFillerName(baseUserId, currentUserName);
+          } catch (_) {}
+        }
 
         doReset(false);
       } catch (e) {
         log('写入失败：' + (e?.message || e));
+        if (e?.stack) log('Stack: ' + e.stack);
         showMsg('error', '写入失败：' + (e?.message || e));
       } finally {
         $('confirmBtn').textContent = '✓ 写入固定表';
