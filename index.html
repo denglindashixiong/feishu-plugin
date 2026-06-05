@@ -244,7 +244,7 @@
 </head>
 <body>
   <h2>📦 订单文字拆分</h2>
-  <div class="sub">先预览拆分结果，确认无误后写入当前飞书多维表格中的“个人表”。</div>
+  <div class="sub">先预览拆分结果，确认无误后写入固定的飞书多维表格“个人表”。</div>
 
   <div class="status">
     <div class="left">
@@ -259,7 +259,7 @@
 
   <div class="btn-row">
     <button onclick="doParse()">拆分预览</button>
-    <button class="primary" id="confirmBtn" onclick="doConfirm()" disabled>✓ 写入当前表</button>
+    <button class="primary" id="confirmBtn" onclick="doConfirm()" disabled>✓ 写入固定表</button>
     <button class="ghost" onclick="doReset()">清空</button>
   </div>
 
@@ -299,6 +299,7 @@
     let currentUserName = '';
     let fieldMetaMap = {};
     let fieldTypeMap = {};
+    const TARGET_TABLE_ID = 'tbllRfMWwtznRRJo';
 
     const $ = (id) => document.getElementById(id);
     const CHANNEL_OPTIONS = ['河南', '福州', '佛山', '自仓库', '南京'];
@@ -360,7 +361,7 @@
       }
 
       sdkReady = true;
-      setStatus('ok', 'SDK 已就绪，正在读取当前表…');
+      setStatus('ok', 'SDK 已就绪，正在读取目标表…');
 
       try {
         const theme = await bitable.bridge.getTheme();
@@ -376,10 +377,10 @@
 
     async function refreshActiveTable() {
       try {
-        currentTable = await bitable.base.getActiveTable();
+        currentTable = await bitable.base.getTable(TARGET_TABLE_ID);
         const meta = await currentTable.getMeta();
-        currentTableName = meta?.name || '当前表';
-        $('sdkDesc').textContent = `已连接到：${currentTableName}（${meta?.id || '未知ID'}）`;
+        currentTableName = meta?.name || '个人表';
+        $('sdkDesc').textContent = `已固定连接到：${currentTableName}（${meta?.id || TARGET_TABLE_ID}）`;
 
         const metaList = await currentTable.getFieldMetaList();
         fieldMetaMap = {};
@@ -388,13 +389,13 @@
           fieldMetaMap[f.name] = f.id;
           fieldTypeMap[f.name] = f.type;
         }
-        log(`当前表：${currentTableName}；字段数：${metaList.length}`);
+        log(`目标表：${currentTableName}；字段数：${metaList.length}`);
         log('字段映射：' + JSON.stringify(fieldMetaMap));
         $('confirmBtn').disabled = false;
       } catch (e) {
-        log('读取当前表失败：' + (e?.message || e));
-        setStatus('err', '已检测到 SDK，但无法读取当前表。请确认打开的是多维表格侧边栏插件。');
-        showMsg('error', '已检测到 SDK，但无法读取当前表：' + (e?.message || e));
+        log('读取目标表失败：' + (e?.message || e));
+        setStatus('err', '读取目标表失败。');
+        showMsg('error', '已检测到 SDK，但无法读取固定表 ID：' + TARGET_TABLE_ID + '。请确认该表存在且当前账号有权限。');
         $('confirmBtn').disabled = true;
       }
     }
@@ -751,7 +752,7 @@
         log('最终写入 fields：' + JSON.stringify(fields));
 
         const recordId = await currentTable.addRecord({ fields });
-        showMsg('success', `已写入「${currentTableName}」，recordId：${recordId}`);
+        showMsg('success', `已写入固定表「${currentTableName}」，recordId：${recordId}`);
         log('写入成功，recordId=' + recordId);
 
         doReset(false);
@@ -759,7 +760,7 @@
         log('写入失败：' + (e?.message || e));
         showMsg('error', '写入失败：' + (e?.message || e));
       } finally {
-        $('confirmBtn').textContent = '✓ 写入当前表';
+        $('confirmBtn').textContent = '✓ 写入固定表';
         $('confirmBtn').disabled = !sdkReady;
       }
     }
