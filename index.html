@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>璁㈠崟鏂囧瓧鎷嗗垎</title>
+  <title>订单文字拆分</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -83,20 +83,20 @@
   </style>
 </head>
 <body>
-  <h2>馃摝 璁㈠崟鏂囧瓧鎷嗗垎</h2>
+  <h2>📦 订单文字拆分</h2>
 
-  <label>绮樿创璁㈠崟鏂囧瓧锛堟敮鎸佷腑鑻辨枃閫楀彿锛?/label>
-  <textarea id="input" placeholder="渚嬶細闄堟枃姘革紝18825732781-2867锛屽箍涓滅渷 涓滆帪甯?铏庨棬闀囷紝12100103000078 椋庤疆1涓?鑷粨搴撳彂 椤轰赴闄嗚繍鍒颁粯"></textarea>
+  <label>粘贴订单文字（支持中英文逗号）</label>
+  <textarea id="input" placeholder="例：陈文永，18825732781-2867，广东省 东莞市 虎门镇，12100103000078 风轮1个 自仓库发 顺丰陆运到付"></textarea>
 
   <div class="btn-row">
-    <button onclick="doParse()">鎷嗗垎棰勮</button>
-    <button class="primary" id="confirmBtn" onclick="doConfirm()" disabled>鉁?鍐欏叆涓汉琛?/button>
-    <button class="ghost" onclick="doReset()">娓呯┖</button>
+    <button onclick="doParse()">拆分预览</button>
+    <button class="primary" id="confirmBtn" onclick="doConfirm()" disabled>✓ 写入个人表</button>
+    <button class="ghost" onclick="doReset()">清空</button>
   </div>
 
   <div class="table-wrap" id="tableWrap">
     <div class="divider"></div>
-    <label>鍐欏叆鍒板摢寮犺〃锛?/label>
+    <label>写入到哪张表？</label>
     <select id="tableSelect"></select>
   </div>
 
@@ -104,31 +104,31 @@
 
   <div class="card">
     <div class="card-header">
-      <span>鎷嗗垎棰勮</span>
+      <span>拆分预览</span>
       <span class="badge" id="badge" style="display:none"></span>
     </div>
-    <div class="placeholder" id="placeholder">璇峰湪涓婃柟杈撳叆鏂囧瓧鍚庣偣鍑汇€屾媶鍒嗛瑙堛€?/div>
+    <div class="placeholder" id="placeholder">请在上方输入文字后点击「拆分预览」</div>
     <div class="fields" id="fields" style="display:none">
-      <div class="field"><div class="field-label">鏀惰揣濮撳悕</div><div class="field-value" id="f-name"></div></div>
-      <div class="field"><div class="field-label">鏀惰揣鐢佃瘽</div><div class="field-value" id="f-phone"></div></div>
-      <div class="field full"><div class="field-label">鍦板潃</div><div class="field-value" id="f-addr"></div></div>
-      <div class="field full"><div class="field-label">鍟嗗搧缂栫爜</div><div class="field-value" id="f-code"></div></div>
-      <div class="field"><div class="field-label">鍟嗗搧绫诲瀷</div><div class="field-value" id="f-type"></div></div>
-      <div class="field"><div class="field-label">鐗╁搧鏁伴噺</div><div class="field-value" id="f-qty"></div></div>
-      <div class="field"><div class="field-label">鐢宠娓犻亾</div><div class="field-value" id="f-channel"></div></div>
-      <div class="field"><div class="field-label">鐗╂祦澶囨敞</div><div class="field-value muted" id="f-logistics"></div></div>
-      <div class="field"><div class="field-label">鐢宠鏃ユ湡锛堝勾鏈堟棩锛?/div><div class="field-value" id="f-date"></div></div>
-      <div class="field"><div class="field-label">鐢宠鏃ユ湡锛堝勾鏈堟棩鏃跺垎绉掞級</div><div class="field-value" id="f-datetime"></div></div>
+      <div class="field"><div class="field-label">收货姓名</div><div class="field-value" id="f-name"></div></div>
+      <div class="field"><div class="field-label">收货电话</div><div class="field-value" id="f-phone"></div></div>
+      <div class="field full"><div class="field-label">地址</div><div class="field-value" id="f-addr"></div></div>
+      <div class="field full"><div class="field-label">商品编码</div><div class="field-value" id="f-code"></div></div>
+      <div class="field"><div class="field-label">商品类型</div><div class="field-value" id="f-type"></div></div>
+      <div class="field"><div class="field-label">物品数量</div><div class="field-value" id="f-qty"></div></div>
+      <div class="field"><div class="field-label">申请渠道</div><div class="field-value" id="f-channel"></div></div>
+      <div class="field"><div class="field-label">物流备注</div><div class="field-value muted" id="f-logistics"></div></div>
+      <div class="field"><div class="field-label">申请日期（年月日）</div><div class="field-value" id="f-date"></div></div>
+      <div class="field"><div class="field-label">申请日期（年月日时分秒）</div><div class="field-value" id="f-datetime"></div></div>
     </div>
   </div>
 
   <div class="debug-box" id="debugBox"></div>
 
   <script>
-    // 鈹€鈹€ 椋炰功鎻掍欢SDK鐢遍涔︿富绔敞鍏ワ紝涓嶉渶瑕佸閮–DN锛岀洿鎺ョ敤window.bitable 鈹€鈹€
+    // ── 飞书插件SDK由飞书主端注入，不需要外部CDN，直接用window.bitable ──
     let sdk = null;
     let parsed = null;
-    // 瀛楁鍚?鈫?{id, type} 鐨勬槧灏勶紝鍒濆鍖栨椂濉厖
+    // 字段名 → {id, type} 的映射，初始化时填充
     let fieldMap = {};
 
     function log(msg) {
@@ -138,7 +138,7 @@
       b.scrollTop = b.scrollHeight;
     }
 
-    // 鈹€鈹€ 绛夊緟椋炰功SDK娉ㄥ叆锛堟渶澶氱瓑5绉掞級鈹€鈹€
+    // ── 等待飞书SDK注入（最多等5秒）──
     async function waitForBitable(timeout = 5000) {
       const start = Date.now();
       while (Date.now() - start < timeout) {
@@ -149,23 +149,23 @@
     }
 
     async function initSDK() {
-      log('姝ｅ湪绛夊緟椋炰功SDK...');
+      log('正在等待飞书SDK...');
       sdk = await waitForBitable();
       if (!sdk) {
-        log('鏈娴嬪埌椋炰功SDK锛屽綋鍓嶄负婕旂ず妯″紡锛堣鍦ㄩ涔﹀缁磋〃鏍兼彃浠跺唴浣跨敤锛?);
+        log('未检测到飞书SDK，当前为演示模式（请在飞书多维表格插件内使用）');
         return;
       }
-      log('椋炰功SDK鍔犺浇鎴愬姛');
+      log('飞书SDK加载成功');
 
       try {
         const theme = await sdk.bridge.getTheme();
         applyTheme(theme);
         sdk.bridge.onThemeChange(e => applyTheme(e.data.theme));
-      } catch(e) { log('涓婚鑾峰彇澶辫触锛? + e.message); }
+      } catch(e) { log('主题获取失败：' + e.message); }
 
       try {
         const metaList = await sdk.base.getTableMetaList();
-        log('鎵惧埌 ' + metaList.length + ' 寮犺〃锛? + metaList.map(m => m.name).join('銆?));
+        log('找到 ' + metaList.length + ' 张表：' + metaList.map(m => m.name).join('、'));
         const sel = document.getElementById('tableSelect');
         metaList.forEach(m => {
           const opt = document.createElement('option');
@@ -176,24 +176,24 @@
         if (metaList.length > 0) {
           document.getElementById('tableWrap').style.display = 'block';
         }
-      } catch(e) { log('鑾峰彇琛ㄥ垪琛ㄥけ璐ワ細' + e.message); }
+      } catch(e) { log('获取表列表失败：' + e.message); }
     }
 
     function applyTheme(t) { document.body.classList.toggle('dark', t === 'DARK'); }
 
-    // 鈹€鈹€ 鎷嗗垎閫昏緫 鈹€鈹€
+    // ── 拆分逻辑 ──
     function parseOrder(raw) {
-      if (!raw || !raw.trim()) return { ok: false, error: '璇峰厛杈撳叆璁㈠崟鏂囧瓧' };
-      const norm = raw.trim().replace(/锛?g, ',');
+      if (!raw || !raw.trim()) return { ok: false, error: '请先输入订单文字' };
+      const norm = raw.trim().replace(/，/g, ',');
       const parts = norm.split(',');
-      if (parts.length < 4) return { ok: false, error: '鏍煎紡涓嶇锛氶渶瑕佽嚦灏?涓€楀彿鍒嗛殧娈碉紝褰撳墠鍙湁 ' + parts.length + ' 娈? };
+      if (parts.length < 4) return { ok: false, error: '格式不符：需要至少4个逗号分隔段，当前只有 ' + parts.length + ' 段' };
 
       const name  = parts[0].trim();
       const phone = parts[1].trim();
       const addr  = parts[2].trim();
       const rest  = parts.slice(3).join(',').trim();
       const segs  = rest.split(/\s+/);
-      if (segs.length < 3) return { ok: false, error: '鍟嗗搧淇℃伅娈垫牸寮忎笉绗︼紝闇€瑕?缂栫爜 鍟嗗搧鎻忚堪 娓犻亾鍙?涓夋' };
+      if (segs.length < 3) return { ok: false, error: '商品信息段格式不符，需要"编码 商品描述 渠道发"三段' };
 
       const code       = segs[0].trim();
       const productRaw = segs[1].trim();
@@ -202,19 +202,19 @@
       if (numMatch) { productType = numMatch[1].trim(); qty = numMatch[2].trim(); }
 
       const channelRaw = segs[2].trim();
-      const faIdx      = channelRaw.lastIndexOf('鍙?);
+      const faIdx      = channelRaw.lastIndexOf('发');
       const channel    = faIdx !== -1 ? channelRaw.substring(0, faIdx).trim() : channelRaw;
       const logistics  = segs.length >= 4 ? segs.slice(3).join('') : '';
 
       const missing = [];
-      if (!name) missing.push('鏀惰揣濮撳悕');
-      if (!phone) missing.push('鏀惰揣鐢佃瘽');
-      if (!addr) missing.push('鍦板潃');
-      if (!code) missing.push('鍟嗗搧缂栫爜');
-      if (!productType) missing.push('鍟嗗搧绫诲瀷');
-      if (!qty) missing.push('鐗╁搧鏁伴噺');
-      if (!channel) missing.push('鐢宠娓犻亾');
-      if (missing.length > 0) return { ok: false, error: '浠ヤ笅瀛楁鏈兘璇嗗埆锛? + missing.join('銆?) };
+      if (!name) missing.push('收货姓名');
+      if (!phone) missing.push('收货电话');
+      if (!addr) missing.push('地址');
+      if (!code) missing.push('商品编码');
+      if (!productType) missing.push('商品类型');
+      if (!qty) missing.push('物品数量');
+      if (!channel) missing.push('申请渠道');
+      if (missing.length > 0) return { ok: false, error: '以下字段未能识别：' + missing.join('、') };
 
       return { ok: true, data: { name, phone, addr, code, productType, qty, channel, logistics } };
     }
@@ -229,7 +229,7 @@
       const el = document.getElementById(id);
       if (!el) return;
       el.className = 'field-value' + (muted ? ' muted' : '') + (!val ? ' empty' : '');
-      el.textContent = val || (muted ? '鏃? : '鏈瘑鍒?);
+      el.textContent = val || (muted ? '无' : '未识别');
     }
 
     function doParse() {
@@ -260,7 +260,7 @@
       const badge = document.getElementById('badge');
       badge.style.display = 'inline';
       badge.className = 'badge' + (allOk ? '' : ' warn');
-      badge.textContent = allOk ? '璇嗗埆姝ｅ父' : '閮ㄥ垎瀛楁鏈瘑鍒?;
+      badge.textContent = allOk ? '识别正常' : '部分字段未识别';
 
       document.getElementById('placeholder').style.display = 'none';
       document.getElementById('fields').style.display = 'grid';
@@ -272,80 +272,84 @@
       hideMsg();
 
       if (!sdk) {
-        showMsg('error', '鏈繛鎺ュ埌椋炰功SDK锛岃鍦ㄩ涔﹀缁磋〃鏍兼彃浠跺唴浣跨敤');
+        showMsg('error', '未连接到飞书SDK，请在飞书多维表格插件内使用');
         return;
       }
 
       const sel = document.getElementById('tableSelect');
       const tableId = sel.value;
-      if (!tableId) { showMsg('error', '璇峰厛閫夋嫨瑕佸啓鍏ョ殑琛?); return; }
+      if (!tableId) { showMsg('error', '请先选择要写入的表'); return; }
       const tableName = sel.options[sel.selectedIndex].text;
 
       try {
         document.getElementById('confirmBtn').disabled = true;
-        document.getElementById('confirmBtn').textContent = '鍐欏叆涓?..';
+        document.getElementById('confirmBtn').textContent = '写入中...';
 
         const table = await sdk.base.getTableById(tableId);
 
-        // 鈹€鈹€ 鍏抽敭锛氬厛鑾峰彇鎵€鏈夊瓧娈碉紝寤虹珛 瀛楁鍚嶁啋瀛楁ID 鍜?瀛楁鍚嶁啋瀛楁绫诲瀷 鐨勬槧灏?鈹€鈹€
+        // ── 关键：先获取所有字段，建立 字段名→字段ID 和 字段名→字段类型 的映射 ──
         const fieldMetaList = await table.getFieldMetaList();
-        const nameToId   = {};  // 瀛楁鍚?鈫?瀛楁id
-        const nameToType = {};  // 瀛楁鍚?鈫?瀛楁绫诲瀷鏁板瓧
+        const nameToId   = {};  // 字段名 → 字段id
+        const nameToType = {};  // 字段名 → 字段类型数字
         fieldMetaList.forEach(f => {
           nameToId[f.name]   = f.id;
           nameToType[f.name] = f.type;
         });
-        log('瀛楁鏄犲皠寤虹珛瀹屾垚锛? + JSON.stringify(nameToId));
+        log('字段映射建立完成：' + JSON.stringify(nameToId));
 
         const now = new Date();
         const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
         const nowMs   = now.getTime();
 
-        // 鈹€鈹€ 鎸夊瓧娈电被鍨嬫瀯寤烘纭殑鍊兼牸寮?鈹€鈹€
-        // 椋炰功瀛楁绫诲瀷锛?=鏂囨湰 2=鏁板瓧 3=鍗曢€?4=澶氶€?5=鏃ユ湡鏃堕棿 7=澶嶉€夋
+        // ── 按字段类型构建正确的值格式 ──
+        // 飞书字段类型：1=文本 2=数字 3=单选 4=多选 5=日期时间 7=复选框
         function makeVal(fieldName, strVal) {
           const type = nameToType[fieldName];
-          log('  瀛楁銆? + fieldName + '銆峣d=' + nameToId[fieldName] + ' type=' + type + ' val=' + strVal);
-          if (type === 2) return Number(strVal) || 0;          // 鏁板瓧
-          if (type === 3) return { text: strVal };              // 鍗曢€?          if (type === 4) return [{ text: strVal }];            // 澶氶€?          if (type === 5) return Number(strVal);                // 鏃ユ湡锛堟椂闂存埑ms锛?          // 榛樿鏂囨湰绫诲瀷(1)锛氱洿鎺ヤ紶瀛楃涓?          return strVal;
+          log('  字段「' + fieldName + '」id=' + nameToId[fieldName] + ' type=' + type + ' val=' + strVal);
+          if (type === 2) return Number(strVal) || 0;          // 数字
+          if (type === 3) return { text: strVal };              // 单选
+          if (type === 4) return [{ text: strVal }];            // 多选
+          if (type === 5) return Number(strVal);                // 日期（时间戳ms）
+          // 默认文本类型(1)：直接传字符串
+          return strVal;
         }
 
-        // 鈹€鈹€ 鐢ㄥ瓧娈礗D浣滀负key鏋勫缓fields瀵硅薄 鈹€鈹€
+        // ── 用字段ID作为key构建fields对象 ──
         const fields = {};
 
         function addField(fieldName, val) {
           const id = nameToId[fieldName];
-          if (!id) { log('  鈿狅笍 瀛楁銆? + fieldName + '銆嶅湪褰撳墠琛ㄤ腑涓嶅瓨鍦紝璺宠繃'); return; }
+          if (!id) { log('  ⚠️ 字段「' + fieldName + '」在当前表中不存在，跳过'); return; }
           fields[id] = val;
         }
 
-        addField('鏀惰揣濮撳悕', makeVal('鏀惰揣濮撳悕', parsed.name));
-        addField('鏀惰揣鐢佃瘽', makeVal('鏀惰揣鐢佃瘽', parsed.phone));
-        addField('鍦板潃',     makeVal('鍦板潃',     parsed.addr));
-        addField('鍟嗗搧缂栫爜', makeVal('鍟嗗搧缂栫爜', parsed.code));
-        addField('鍟嗗搧绫诲瀷', makeVal('鍟嗗搧绫诲瀷', parsed.productType));
-        addField('鐗╁搧鏁伴噺', makeVal('鐗╁搧鏁伴噺', parsed.qty));
-        addField('鐢宠娓犻亾', makeVal('鐢宠娓犻亾', parsed.channel));
-        if (parsed.logistics) addField('鐗╂祦澶囨敞', makeVal('鐗╂祦澶囨敞', parsed.logistics));
+        addField('收货姓名', makeVal('收货姓名', parsed.name));
+        addField('收货电话', makeVal('收货电话', parsed.phone));
+        addField('地址',     makeVal('地址',     parsed.addr));
+        addField('商品编码', makeVal('商品编码', parsed.code));
+        addField('商品类型', makeVal('商品类型', parsed.productType));
+        addField('物品数量', makeVal('物品数量', parsed.qty));
+        addField('申请渠道', makeVal('申请渠道', parsed.channel));
+        if (parsed.logistics) addField('物流备注', makeVal('物流备注', parsed.logistics));
 
-        // 鏃ユ湡瀛楁鍗曠嫭澶勭悊
-        if (nameToId['鐢宠鏃ユ湡锛堝勾鏈堟棩锛?])       fields[nameToId['鐢宠鏃ユ湡锛堝勾鏈堟棩锛?]]       = todayMs;
-        if (nameToId['鐢宠鏃ユ湡锛堝勾鏈堟棩鏃跺垎绉掞級']) fields[nameToId['鐢宠鏃ユ湡锛堝勾鏈堟棩鏃跺垎绉掞級']] = nowMs;
+        // 日期字段单独处理
+        if (nameToId['申请日期（年月日）'])       fields[nameToId['申请日期（年月日）']]       = todayMs;
+        if (nameToId['申请日期（年月日时分秒）']) fields[nameToId['申请日期（年月日时分秒）']] = nowMs;
 
-        log('鏈€缁堝啓鍏ields锛? + JSON.stringify(fields));
+        log('最终写入fields：' + JSON.stringify(fields));
 
-        // 鈹€鈹€ 姝ｇ‘鐨刟ddRecord璋冪敤锛氫紶 {fields: {...}} 鈹€鈹€
+        // ── 正确的addRecord调用：传 {fields: {...}} ──
         const recordId = await table.addRecord({ fields });
-        log('鉁?鍐欏叆鎴愬姛锛乺ecordId=' + recordId);
-        showMsg('success', '鉁?宸插啓鍏ャ€? + tableName + '銆嶁€?' + parsed.name + ' 鐨勮鍗?);
+        log('✅ 写入成功！recordId=' + recordId);
+        showMsg('success', '✓ 已写入「' + tableName + '」— ' + parsed.name + ' 的订单');
         doReset();
 
       } catch (err) {
-        log('鉂?鍐欏叆澶辫触锛? + err.message);
+        log('❌ 写入失败：' + err.message);
         if (err.stack) log('Stack: ' + err.stack);
-        showMsg('error', '鍐欏叆澶辫触锛? + err.message);
+        showMsg('error', '写入失败：' + err.message);
         document.getElementById('confirmBtn').disabled = false;
-        document.getElementById('confirmBtn').textContent = '鉁?鍐欏叆涓汉琛?;
+        document.getElementById('confirmBtn').textContent = '✓ 写入个人表';
       }
     }
 
@@ -355,7 +359,7 @@
       document.getElementById('fields').style.display = 'none';
       document.getElementById('badge').style.display = 'none';
       document.getElementById('confirmBtn').disabled = true;
-      document.getElementById('confirmBtn').textContent = '鉁?鍐欏叆涓汉琛?;
+      document.getElementById('confirmBtn').textContent = '✓ 写入个人表';
       parsed = null;
     }
 
@@ -363,7 +367,7 @@
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') doParse();
     });
 
-    // 鍚姩鏃剁瓑寰呴涔DK娉ㄥ叆
+    // 启动时等待飞书SDK注入
     initSDK();
   </script>
 </body>
