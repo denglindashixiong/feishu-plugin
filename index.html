@@ -888,7 +888,7 @@
         if (e?.stack) log('Stack: ' + e.stack);
         showMsg('error', '写入失败：' + (e?.message || e));
       } finally {
-        $('confirmBtn').textContent = '✓ 写入固定表';
+        $('confirmBtn').textContent = '✓ 写入个人表';
         $('confirmBtn').disabled = !sdkReady;
       }
     }
