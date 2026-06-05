@@ -209,6 +209,18 @@
     body.dark .field-value { color: #e0e0e0; }
     .field-value.empty { color: #c9cdd4; font-weight: 400; font-style: italic; }
     .field-value.muted { color: #8f959e; font-weight: 400; }
+    .field-value.danger { color: #d32f2f; font-weight: 600; }
+    body.dark .field-value.danger { color: #ef9a9a; }
+
+    .stock-row {
+      display: none;
+      grid-column: 1 / -1;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid #dee0e3;
+    }
+    .stock-row.visible { display: grid; }
+    body.dark .stock-row { border-color: #3a3a3a; }
+    .stock-row .field:nth-child(even) { border-right: none; }
 
     .debug-box {
       margin-top: 10px;
@@ -250,7 +262,7 @@
   </div>
 
   <label>粘贴订单文字（支持中英文逗号）</label>
-  <textarea id="input" placeholder="例：李洪川，17844719778-5944，四川省 眉山市 洪雅县，11002015002541 电机1个 佛山基地仓 福州发 顺丰陆运到付"></textarea>
+  <textarea id="input" placeholder="例：李洪川，17844719778-5944，四川省眉山市洪雅县，11002015002541 电机1个 佛山基地仓 商用件 福州发 顺丰陆运到付 微信单"></textarea>
 
   <div class="btn-row">
     <button onclick="doParse()">拆分预览</button>
@@ -267,6 +279,10 @@
     </div>
     <div class="placeholder" id="placeholder">请在上方输入文字后点击「拆分预览」</div>
     <div class="fields" id="fields" style="display:none">
+      <div class="stock-row" id="stockRow">
+        <div class="field"><div class="field-label">是否有库存</div><div class="field-value" id="f-has-stock"></div></div>
+        <div class="field"><div class="field-label">库存数量</div><div class="field-value" id="f-stock-qty"></div></div>
+      </div>
       <div class="field"><div class="field-label">收货姓名</div><div class="field-value" id="f-name"></div></div>
       <div class="field"><div class="field-label">收货电话</div><div class="field-value" id="f-phone"></div></div>
       <div class="field full"><div class="field-label">地址</div><div class="field-value" id="f-addr"></div></div>
@@ -291,9 +307,14 @@
     let parsed = null;
     let currentTable = null;
     let currentTableName = '';
+    let inventoryTable = null;
+    let inventoryTableName = '';
+    let inventoryCache = {};
     let fieldMetaMap = {};
     let fieldTypeMap = {};
     const TARGET_TABLE_ID = 'tbllRfMWwtznRRJo';
+    const INVENTORY_CODE_FIELD = '备件编码/型号';
+    const INVENTORY_QTY_FIELD = '实时库存数量';
 
     const $ = (id) => document.getElementById(id);
     const CHANNEL_OPTIONS = ['河南', '福州', '佛山', '自仓库', '南京'];
@@ -370,6 +391,7 @@
       }
 
       await refreshActiveTable();
+      await refreshInventoryTable();
     }
 
     async function refreshActiveTable() {
@@ -395,6 +417,56 @@
         showMsg('error', '已检测到 SDK，但无法读取固定表 ID：' + TARGET_TABLE_ID + '。请确认该表存在且当前账号有权限。');
         $('confirmBtn').disabled = true;
       }
+    }
+
+    async function refreshInventoryTable() {
+      inventoryTable = null;
+      inventoryTableName = '';
+      inventoryCache = {};
+
+      try {
+        const tableList = await bitable.base.getTableMetaList();
+        const invMeta = tableList.find(t => t.name === '库存表' || t.name.includes('库存'));
+        if (!invMeta) {
+          log('未找到库存表，自仓库渠道将无法查询库存');
+          return;
+        }
+
+        inventoryTable = await bitable.base.getTableById(invMeta.id);
+        inventoryTableName = invMeta.name;
+        log(`已连接库存表：${inventoryTableName}`);
+
+        const codeField = await inventoryTable.getField(INVENTORY_CODE_FIELD);
+        const qtyField = await inventoryTable.getField(INVENTORY_QTY_FIELD);
+        const recordIds = await inventoryTable.getRecordIdList();
+
+        for (const rid of recordIds) {
+          try {
+            const codeVal = await codeField.getValue(rid);
+            const code = String(codeVal ?? '').trim();
+            if (!code) continue;
+            const qtyVal = await qtyField.getValue(rid);
+            const qty = Number(qtyVal);
+            inventoryCache[code] = Number.isFinite(qty) ? qty : 0;
+          } catch (_) {}
+        }
+
+        log(`库存缓存已加载，共 ${Object.keys(inventoryCache).length} 条编码`);
+      } catch (e) {
+        log('加载库存表失败：' + (e?.message || e));
+      }
+    }
+
+    function lookupInventoryStock(productCode) {
+      const code = String(productCode || '').trim();
+      if (!code || !inventoryTable) {
+        return { found: false, qty: 0, hasStock: false };
+      }
+      if (!Object.prototype.hasOwnProperty.call(inventoryCache, code)) {
+        return { found: false, qty: 0, hasStock: false };
+      }
+      const qty = inventoryCache[code];
+      return { found: true, qty, hasStock: qty > 0 };
     }
 
     function pad2(n) { return String(n).padStart(2, '0'); }
@@ -542,6 +614,36 @@
       el.textContent = val || (muted ? '无' : '未识别');
     }
 
+    function setStockField(id, val, danger = false) {
+      const el = $(id);
+      if (!el) return;
+      el.className = 'field-value' + (danger ? ' danger' : '');
+      el.textContent = val;
+    }
+
+    async function updateStockPreview(data) {
+      const stockRow = $('stockRow');
+      if (!stockRow) return;
+
+      if (data.channel !== '自仓库') {
+        stockRow.classList.remove('visible');
+        return;
+      }
+
+      stockRow.classList.add('visible');
+
+      const stock = lookupInventoryStock(data.code);
+      if (!stock.found || stock.qty <= 0) {
+        setStockField('f-has-stock', '无', true);
+        setStockField('f-stock-qty', '0', true);
+        log(`库存查询：编码 ${data.code} → 无库存`);
+      } else {
+        setStockField('f-has-stock', '有', false);
+        setStockField('f-stock-qty', String(stock.qty), false);
+        log(`库存查询：编码 ${data.code} → 有库存，数量 ${stock.qty}`);
+      }
+    }
+
     function resolveDateOnlyFieldName() {
       const exact = ['申请日期（年月日）', '申请日期td（年月日）'];
       for (const n of exact) {
@@ -570,9 +672,11 @@
       return await field.createCell(value);
     }
 
-    function setPreviewValues(data) {
+    async function setPreviewValues(data) {
       const now = new Date();
       const { dateStr, dateTimeStr } = formatDateParts(now);
+
+      await updateStockPreview(data);
 
       setField('f-name', data.name);
       setField('f-phone', data.phone);
@@ -589,7 +693,7 @@
       setField('f-datetime', dateTimeStr);
     }
 
-    function doParse() {
+    async function doParse() {
       hideMsg();
       const raw = $('input').value;
       const result = parseOrder(raw);
@@ -600,11 +704,11 @@
         $('placeholder').style.display = 'block';
         $('fields').style.display = 'none';
         $('badge').style.display = 'none';
+        $('stockRow')?.classList.remove('visible');
         return;
       }
 
       parsed = result.data;
-      setPreviewValues(parsed);
 
       $('placeholder').style.display = 'none';
       $('fields').style.display = 'grid';
@@ -613,6 +717,12 @@
       badge.style.display = 'inline-flex';
       badge.className = 'pill ok';
       badge.textContent = '识别正常';
+
+      try {
+        await setPreviewValues(parsed);
+      } catch (e) {
+        showMsg('error', '预览失败：' + (e?.message || e));
+      }
 
       $('confirmBtn').disabled = !sdkReady;
     }
@@ -698,8 +808,15 @@
       $('fields').style.display = 'none';
       $('confirmBtn').disabled = !sdkReady;
       if (clearInput) $('input').value = '';
-      const ids = ['f-name','f-phone','f-addr','f-code','f-type','f-qty','f-channel','f-warehouse','f-house','f-wechat','f-logistics','f-date','f-datetime'];
-      for (const id of ids) $(id).textContent = '';
+      $('stockRow')?.classList.remove('visible');
+      const ids = ['f-has-stock','f-stock-qty','f-name','f-phone','f-addr','f-code','f-type','f-qty','f-channel','f-warehouse','f-house','f-wechat','f-logistics','f-date','f-datetime'];
+      for (const id of ids) {
+        const el = $(id);
+        if (el) {
+          el.textContent = '';
+          el.className = 'field-value';
+        }
+      }
     }
 
     window.doParse = doParse;
