@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>订单文字拆分</title>
-  <script src="https://unpkg.com/@lark-base-open/js-sdk@1.2.1/dist/index.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@lark-base-open/js-sdk@1.2.1/dist/index.umd.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -24,7 +24,7 @@
     }
     textarea:focus { border-color: #1456f0; }
     body.dark textarea { background: #333; border-color: #434343; color: #e0e0e0; }
-    .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+    .btn-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
     button {
       padding: 7px 16px; border-radius: 6px; border: 1px solid #dee0e3;
       font-size: 13px; cursor: pointer; background: #fff; color: #1f2329;
@@ -42,12 +42,12 @@
     select {
       width: 100%; padding: 7px 10px; border: 1px solid #dee0e3;
       border-radius: 6px; font-size: 13px; background: #fff;
-      color: #1f2329; font-family: inherit; outline: none;
+      color: #1f2329; font-family: inherit; outline: none; margin-top: 5px;
     }
     body.dark select { background: #333; border-color: #434343; color: #e0e0e0; }
     .msg {
       margin-top: 12px; padding: 9px 12px; border-radius: 6px;
-      font-size: 13px; display: none;
+      font-size: 13px; display: none; line-height: 1.5;
     }
     .msg.error { background: #fff0f0; color: #d32f2f; display: block; }
     .msg.success { background: #e8f5e9; color: #2e7d32; display: block; }
@@ -77,15 +77,20 @@
     .field-value.muted { color: #8f959e; font-weight: 400; }
     .divider { height: 1px; background: #dee0e3; margin: 12px 0; }
     body.dark .divider { background: #3a3a3a; }
-    .debug { margin-top: 10px; padding: 8px 10px; background: #f7f8fa; border-radius: 6px; font-size: 11px; color: #8f959e; display: none; word-break: break-all; }
-    body.dark .debug { background: #2a2a2a; }
+    .debug-box {
+      margin-top: 10px; padding: 8px 10px; background: #f7f8fa;
+      border-radius: 6px; font-size: 11px; color: #646a73;
+      word-break: break-all; line-height: 1.6; display: none;
+      max-height: 200px; overflow-y: auto;
+    }
+    body.dark .debug-box { background: #2a2a2a; color: #9e9e9e; }
   </style>
 </head>
 <body>
   <h2>📦 订单文字拆分</h2>
 
   <label>粘贴订单文字（支持中英文逗号）</label>
-  <textarea id="input" placeholder="例：陈文永，18825732781-2867，广东省 东莞市 虎门镇，12100103000078 风轮1个 自仓库发"></textarea>
+  <textarea id="input" placeholder="例：陈文永，18825732781-2867，广东省 东莞市 虎门镇，12100103000078 风轮1个 自仓库发 顺丰陆运到付"></textarea>
 
   <div class="btn-row">
     <button onclick="doParse()">拆分预览</button>
@@ -100,7 +105,6 @@
   </div>
 
   <div class="msg" id="msgBox"></div>
-  <div class="debug" id="debugBox"></div>
 
   <div class="card">
     <div class="card-header">
@@ -111,36 +115,42 @@
     <div class="fields" id="fields" style="display:none">
       <div class="field"><div class="field-label">收货姓名</div><div class="field-value" id="f-name"></div></div>
       <div class="field"><div class="field-label">收货电话</div><div class="field-value" id="f-phone"></div></div>
-      <div class="field full"><div class="field-label">收货地址</div><div class="field-value" id="f-addr"></div></div>
+      <div class="field full"><div class="field-label">地址</div><div class="field-value" id="f-addr"></div></div>
       <div class="field full"><div class="field-label">商品编码</div><div class="field-value" id="f-code"></div></div>
       <div class="field"><div class="field-label">商品类型</div><div class="field-value" id="f-type"></div></div>
-      <div class="field"><div class="field-label">商品数量</div><div class="field-value" id="f-qty"></div></div>
+      <div class="field"><div class="field-label">物品数量</div><div class="field-value" id="f-qty"></div></div>
       <div class="field"><div class="field-label">申请渠道</div><div class="field-value" id="f-channel"></div></div>
-      <div class="field"><div class="field-label">物流方式 <span style="font-size:10px;color:#c9cdd4">(选填)</span></div><div class="field-value muted" id="f-logistics"></div></div>
+      <div class="field"><div class="field-label">物流备注</div><div class="field-value muted" id="f-logistics"></div></div>
+      <div class="field"><div class="field-label">申请日期（年月日）</div><div class="field-value" id="f-date"></div></div>
+      <div class="field"><div class="field-label">申请日期（年月日时分秒）</div><div class="field-value" id="f-datetime"></div></div>
     </div>
   </div>
+
+  <!-- 调试区，出错时展示详细信息 -->
+  <div class="debug-box" id="debugBox"></div>
 
   <script>
     let sdk = null;
     let parsed = null;
 
-    // ── 文本字段格式：飞书多行文本要传数组 ──
-    function textVal(str) {
-      return [{ type: 'text', text: str }];
+    // ── 飞书文本字段格式 ──
+    function tv(str) {
+      return [{ type: 'text', text: String(str) }];
     }
 
     // ── SDK 初始化 ──
     async function initSDK() {
       try {
         sdk = window.bitable;
-        if (!sdk) { showDebug('未检测到飞书SDK，当前为演示模式'); return; }
+        if (!sdk) { log('未检测到飞书SDK，演示模式'); return; }
 
         const theme = await sdk.bridge.getTheme();
         applyTheme(theme);
         sdk.bridge.onThemeChange(e => applyTheme(e.data.theme));
 
-        // 获取所有表填入下拉
         const metaList = await sdk.base.getTableMetaList();
+        log('找到 ' + metaList.length + ' 张表：' + metaList.map(m => m.name).join('、'));
+
         const sel = document.getElementById('tableSelect');
         metaList.forEach(m => {
           const opt = document.createElement('option');
@@ -148,73 +158,67 @@
           opt.textContent = m.name;
           sel.appendChild(opt);
         });
-
-        if (metaList.length > 0) {
-          document.getElementById('tableWrap').style.display = 'block';
-          showDebug('SDK加载成功，共找到 ' + metaList.length + ' 张表：' + metaList.map(m => m.name).join('、'));
-        }
+        if (metaList.length > 0) document.getElementById('tableWrap').style.display = 'block';
       } catch (e) {
-        showDebug('SDK初始化出错：' + e.message);
+        log('SDK初始化错误：' + e.message);
       }
     }
 
-    function applyTheme(t) {
-      document.body.classList.toggle('dark', t === 'DARK');
+    function applyTheme(t) { document.body.classList.toggle('dark', t === 'DARK'); }
+
+    function log(msg) {
+      const b = document.getElementById('debugBox');
+      b.style.display = 'block';
+      b.innerHTML += '<div>' + new Date().toLocaleTimeString() + ' ' + msg + '</div>';
     }
 
     // ── 拆分逻辑 ──
     function parseOrder(raw) {
       if (!raw || !raw.trim()) return { ok: false, error: '请先输入订单文字' };
-      const normalized = raw.trim().replace(/，/g, ',');
-      const parts = normalized.split(',');
-      if (parts.length < 4) return { ok: false, error: `格式不符：需要至少4个逗号分隔段，当前只有 ${parts.length} 段` };
+      const norm = raw.trim().replace(/，/g, ',');
+      const parts = norm.split(',');
+      if (parts.length < 4) return { ok: false, error: '格式不符：需要至少4个逗号分隔段，当前只有 ' + parts.length + ' 段' };
 
       const name  = parts[0].trim();
       const phone = parts[1].trim();
       const addr  = parts[2].trim();
       const rest  = parts.slice(3).join(',').trim();
       const segs  = rest.split(/\s+/);
-
       if (segs.length < 3) return { ok: false, error: '商品信息段格式不符，需要"编码 商品描述 渠道发"三段空格分隔' };
 
-      const code = segs[0].trim();
+      const code       = segs[0].trim();
       const productRaw = segs[1].trim();
-      const numMatch = productRaw.match(/^([^\d]+)(\d+)/);
-      let productType = productRaw, qty = '';
+      const numMatch   = productRaw.match(/^([^\d]+)(\d+)/);
+      let productType  = productRaw, qty = '';
       if (numMatch) { productType = numMatch[1].trim(); qty = numMatch[2].trim(); }
 
       const channelRaw = segs[2].trim();
-      const faIdx = channelRaw.lastIndexOf('发');
-      const channel = faIdx !== -1 ? channelRaw.substring(0, faIdx).trim() : channelRaw;
-      const logistics = segs.length >= 4 ? segs.slice(3).join('') : '';
+      const faIdx      = channelRaw.lastIndexOf('发');
+      const channel    = faIdx !== -1 ? channelRaw.substring(0, faIdx).trim() : channelRaw;
+      const logistics  = segs.length >= 4 ? segs.slice(3).join('') : '';
 
       const missing = [];
       if (!name) missing.push('收货姓名');
       if (!phone) missing.push('收货电话');
-      if (!addr) missing.push('收货地址');
+      if (!addr) missing.push('地址');
       if (!code) missing.push('商品编码');
       if (!productType) missing.push('商品类型');
-      if (!qty) missing.push('商品数量');
+      if (!qty) missing.push('物品数量');
       if (!channel) missing.push('申请渠道');
       if (missing.length > 0) return { ok: false, error: '以下字段未能识别：' + missing.join('、') };
 
       return { ok: true, data: { name, phone, addr, code, productType, qty, channel, logistics } };
     }
 
-    // ── UI 辅助 ──
     function showMsg(type, text) {
       const b = document.getElementById('msgBox');
-      b.className = 'msg ' + type;
-      b.textContent = text;
+      b.className = 'msg ' + type; b.textContent = text;
     }
     function hideMsg() { document.getElementById('msgBox').className = 'msg'; }
-    function showDebug(text) {
-      const b = document.getElementById('debugBox');
-      b.style.display = 'block';
-      b.textContent = '调试：' + text;
-    }
+
     function setField(id, val, muted) {
       const el = document.getElementById(id);
+      if (!el) return;
       el.className = 'field-value' + (muted ? ' muted' : '') + (!val ? ' empty' : '');
       el.textContent = val || (muted ? '无' : '未识别');
     }
@@ -226,6 +230,11 @@
 
       const d = result.data;
       parsed = d;
+
+      const now = new Date();
+      const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+      const datetimeStr = dateStr + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+
       setField('f-name', d.name);
       setField('f-phone', d.phone);
       setField('f-addr', d.addr);
@@ -234,6 +243,8 @@
       setField('f-qty', d.qty);
       setField('f-channel', d.channel);
       setField('f-logistics', d.logistics, true);
+      setField('f-date', dateStr);
+      setField('f-datetime', datetimeStr);
 
       const allOk = [d.name, d.phone, d.addr, d.code, d.productType, d.qty, d.channel].every(Boolean);
       const badge = document.getElementById('badge');
@@ -250,15 +261,11 @@
       if (!parsed) return;
       hideMsg();
 
-      if (!sdk) {
-        showMsg('success', '演示模式：识别成功（在飞书内使用才能写入）');
-        return;
-      }
+      if (!sdk) { showMsg('success', '演示模式：识别成功（在飞书内使用才能写入）'); return; }
 
       const sel = document.getElementById('tableSelect');
       const tableId = sel.value;
       if (!tableId) { showMsg('error', '请先选择要写入的表'); return; }
-
       const tableName = sel.options[sel.selectedIndex].text;
 
       try {
@@ -267,29 +274,72 @@
 
         const table = await sdk.base.getTableById(tableId);
 
-        // ── 关键：飞书文本字段需要传 [{type:'text', text:'值'}] 格式 ──
-        const fields = {
-          '收货姓名': textVal(parsed.name),
-          '收货电话': textVal(parsed.phone),
-          '收货地址': textVal(parsed.addr),
-          '商品编码': textVal(parsed.code),
-          '商品类型': textVal(parsed.productType),
-          '商品数量': textVal(parsed.qty),
-          '申请渠道': textVal(parsed.channel),
-        };
-        if (parsed.logistics) fields['物流方式'] = textVal(parsed.logistics);
+        // 先获取该表所有字段信息，确认字段类型
+        const fieldMetaList = await table.getFieldMetaList();
+        log('字段列表：' + fieldMetaList.map(f => f.name + '(' + f.type + ')').join('、'));
 
-        showDebug('准备写入字段：' + JSON.stringify(Object.keys(fields)));
+        // 根据字段类型构建正确的写入格式
+        const now = new Date();
+        const tsMs = now.getTime(); // 毫秒时间戳
 
-        // ── 正确的 addRecord 调用方式 ──
+        // 当天零点时间戳（用于"年月日"字段）
+        const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+        // 字段名 → 字段类型的映射
+        const typeMap = {};
+        fieldMetaList.forEach(f => { typeMap[f.name] = f.type; });
+
+        // 构建写入对象，根据字段实际类型决定格式
+        // 飞书字段类型：1=文本, 2=数字, 3=单选, 4=多选, 5=日期, 7=复选框, 11=人员 ...
+        function buildVal(fieldName, strVal) {
+          const t = typeMap[fieldName];
+          log('字段「' + fieldName + '」类型=' + t + '，值=' + strVal);
+          if (t === 2) return Number(strVal) || 0;   // 数字
+          if (t === 3) return { text: strVal };        // 单选
+          if (t === 4) return [{ text: strVal }];      // 多选
+          if (t === 5) return Number(strVal);           // 日期（时间戳）
+          // 文本类型(1)及其他
+          return tv(strVal);
+        }
+
+        const fields = {};
+
+        // 文本字段
+        if (typeMap['收货姓名'] !== undefined) fields['收货姓名'] = buildVal('收货姓名', parsed.name);
+        if (typeMap['收货电话'] !== undefined) fields['收货电话'] = buildVal('收货电话', parsed.phone);
+        if (typeMap['地址']     !== undefined) fields['地址']     = buildVal('地址', parsed.addr);
+        if (typeMap['商品编码'] !== undefined) fields['商品编码'] = buildVal('商品编码', parsed.code);
+        if (typeMap['商品类型'] !== undefined) fields['商品类型'] = buildVal('商品类型', parsed.productType);
+        if (typeMap['申请渠道'] !== undefined) fields['申请渠道'] = buildVal('申请渠道', parsed.channel);
+        if (parsed.logistics && typeMap['物流备注'] !== undefined) {
+          fields['物流备注'] = buildVal('物流备注', parsed.logistics);
+        }
+
+        // 数量字段（DOUBLE）
+        if (typeMap['物品数量'] !== undefined) {
+          const t = typeMap['物品数量'];
+          fields['物品数量'] = t === 2 ? (Number(parsed.qty) || 0) : buildVal('物品数量', parsed.qty);
+        }
+
+        // 时间戳字段
+        if (typeMap['申请日期（年月日）'] !== undefined) {
+          fields['申请日期（年月日）'] = todayMs;
+        }
+        if (typeMap['申请日期（年月日时分秒）'] !== undefined) {
+          fields['申请日期（年月日时分秒）'] = tsMs;
+        }
+
+        log('准备写入 fields：' + JSON.stringify(fields));
+
         const recordId = await table.addRecord(fields);
-
-        showDebug('写入成功，recordId：' + recordId);
-        showMsg('success', `✓ 已写入「${tableName}」— ${parsed.name} 的订单`);
+        log('写入成功！recordId=' + recordId);
+        showMsg('success', '✓ 已写入「' + tableName + '」— ' + parsed.name + ' 的订单');
         doReset();
+
       } catch (err) {
-        showDebug('写入出错：' + err.message + ' | stack: ' + (err.stack || ''));
-        showMsg('error', '写入失败：' + err.message + '（请确认表格字段名与工具一致）');
+        log('❌ 写入失败：' + err.message);
+        if (err.stack) log('Stack: ' + err.stack);
+        showMsg('error', '写入失败：' + err.message);
         document.getElementById('confirmBtn').disabled = false;
         document.getElementById('confirmBtn').textContent = '✓ 写入个人表';
       }
