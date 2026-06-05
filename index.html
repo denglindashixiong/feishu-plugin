@@ -227,9 +227,6 @@
       color: #9e9e9e;
       border-color: #3a3a3a;
     }
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .small { font-size: 12px; color: #8f959e; }
-    body.dark .small { color: #9e9e9e; }
     .divider { height: 1px; background: #dee0e3; margin: 12px 0; }
     body.dark .divider { background: #3a3a3a; }
 
@@ -256,7 +253,7 @@
   </div>
 
   <label>粘贴订单文字（支持中英文逗号）</label>
-  <textarea id="input" placeholder="例：陈文永，18825732781-2867，广东省 东莞市 虎门镇北栅东方大厦怡泰沐足2楼前台，12100103000078 风轮1个 自仓库发 顺丰陆运到付"></textarea>
+  <textarea id="input" placeholder="例：陈文永，18825732781-2867，广东省 东莞市 虎门镇北栅东方大厦怡泰沐足2楼前台，12100103000078 风轮1个 商用件 福州发 顺丰陆运到付 微信单"></textarea>
 
   <div class="btn-row">
     <button onclick="doParse()">拆分预览</button>
@@ -280,7 +277,10 @@
       <div class="field"><div class="field-label">商品类型</div><div class="field-value" id="f-type"></div></div>
       <div class="field"><div class="field-label">物品数量</div><div class="field-value" id="f-qty"></div></div>
       <div class="field"><div class="field-label">申请渠道</div><div class="field-value" id="f-channel"></div></div>
-      <div class="field"><div class="field-label">物流备注</div><div class="field-value muted" id="f-logistics"></div></div>
+      <div class="field"><div class="field-label">家商用</div><div class="field-value" id="f-house"></div></div>
+      <div class="field"><div class="field-label">微信单</div><div class="field-value" id="f-wechat"></div></div>
+      <div class="field"><div class="field-label">填表人</div><div class="field-value" id="f-user"></div></div>
+      <div class="field full"><div class="field-label">物流备注</div><div class="field-value muted" id="f-logistics"></div></div>
       <div class="field"><div class="field-label">申请日期（年月日）</div><div class="field-value" id="f-date"></div></div>
       <div class="field"><div class="field-label">申请日期（年月日时分秒）</div><div class="field-value" id="f-datetime"></div></div>
     </div>
@@ -293,11 +293,13 @@
     let sdkReady = false;
     let parsed = null;
     let currentTable = null;
+    let currentTableName = '';
+    let currentUserName = '';
     let fieldMetaMap = {};
     let fieldTypeMap = {};
-    let currentTableName = '';
 
     const $ = (id) => document.getElementById(id);
+    const CHANNEL_OPTIONS = ['河南', '福州', '佛山', '自仓库', '南京'];
 
     function log(msg) {
       const b = $('debugBox');
@@ -308,7 +310,7 @@
       b.scrollTop = b.scrollHeight;
     }
 
-    function setStatus(kind, title, desc) {
+    function setStatus(kind, desc) {
       const pill = $('sdkPill');
       const descEl = $('sdkDesc');
       pill.className = 'pill ' + kind;
@@ -337,7 +339,6 @@
     }
 
     async function loadSDK() {
-      // 先尝试官方前端插件 SDK；若外链模块失败，再尝试运行时注入对象。
       try {
         const mod = await import('https://cdn.jsdelivr.net/npm/@lark-base-open/js-sdk/+esm');
         bitable = mod.bitable || mod.default?.bitable || mod.default || null;
@@ -350,14 +351,14 @@
 
       if (!bitable || !bitable.base) {
         sdkReady = false;
-        setStatus('warn', '未连接', '未检测到飞书 SDK。请确保该页面是从飞书多维表格侧边栏插件中打开，而不是直接在浏览器里打开。');
+        setStatus('warn', '未检测到飞书 SDK。请确保该页面是从飞书多维表格侧边栏插件中打开，而不是直接在浏览器里打开。');
         showMsg('error', '未检测到飞书 SDK。请在飞书多维表格侧边栏插件里运行此页面。');
         $('confirmBtn').disabled = true;
         return;
       }
 
       sdkReady = true;
-      setStatus('ok', '已连接', 'SDK 已就绪，正在读取当前表…');
+      setStatus('ok', 'SDK 已就绪，正在读取当前表…');
 
       try {
         const theme = await bitable.bridge.getTheme();
@@ -368,6 +369,7 @@
       }
 
       await refreshActiveTable();
+      await refreshCurrentUser();
     }
 
     async function refreshActiveTable() {
@@ -376,8 +378,6 @@
         const meta = await currentTable.getMeta();
         currentTableName = meta?.name || '当前表';
         $('sdkDesc').textContent = `已连接到：${currentTableName}（${meta?.id || '未知ID'}）`;
-        $('sdkPill').className = 'pill ok';
-        $('sdkPill').textContent = '已连接';
 
         const metaList = await currentTable.getFieldMetaList();
         fieldMetaMap = {};
@@ -391,9 +391,60 @@
         $('confirmBtn').disabled = false;
       } catch (e) {
         log('读取当前表失败：' + (e?.message || e));
-        setStatus('err', '错误', '已检测到 SDK，但无法读取当前表。请确认打开的是多维表格侧边栏插件。');
+        setStatus('err', '已检测到 SDK，但无法读取当前表。请确认打开的是多维表格侧边栏插件。');
         showMsg('error', '已检测到 SDK，但无法读取当前表：' + (e?.message || e));
         $('confirmBtn').disabled = true;
+      }
+    }
+
+    async function refreshCurrentUser() {
+      try {
+        let userName = '';
+
+        // 1) 尝试任何可能存在的“姓名/昵称”类接口
+        const maybeMethods = [
+          'getUserInfo',
+          'getCurrentUserInfo',
+          'getBaseUserInfo',
+          'getUserProfile',
+        ];
+
+        for (const m of maybeMethods) {
+          const fn = bitable?.bridge?.[m];
+          if (typeof fn === 'function') {
+            try {
+              const res = await fn.call(bitable.bridge);
+              if (typeof res === 'string' && res.trim()) {
+                userName = res.trim();
+                break;
+              }
+              if (res && typeof res === 'object') {
+                userName = res.name || res.nickName || res.nickname || res.displayName || res.realName || res.userName || res.fullName || '';
+                if (userName) break;
+              }
+            } catch (_) {}
+          }
+        }
+
+        // 2) 回退到 Base UserId（官方明确支持，且在侧边栏等点位唯一）
+        if (!userName) {
+          try {
+            userName = await bitable.bridge.getBaseUserId();
+          } catch (_) {}
+        }
+
+        // 3) 再回退到 UserId
+        if (!userName) {
+          try {
+            userName = await bitable.bridge.getUserId();
+          } catch (_) {}
+        }
+
+        currentUserName = String(userName || '').trim();
+        $('f-user').textContent = currentUserName || '未识别';
+        log('当前填表人：' + (currentUserName || '未识别'));
+      } catch (e) {
+        log('读取当前用户失败：' + (e?.message || e));
       }
     }
 
@@ -402,21 +453,28 @@
     function formatDateParts(now) {
       const dateStr = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
       const dateTimeStr = `${dateStr} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
-      return { dateStr, dateTimeStr, todayMs: new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(), nowMs: now.getTime() };
+      return {
+        dateStr,
+        dateTimeStr,
+        todayMs: new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(),
+        nowMs: now.getTime()
+      };
     }
 
-    // 规则：
-    // 1. 第1个逗号前：姓名
-    // 2. 第2个逗号前：电话
-    // 3. 第3个逗号前：地址
-    // 4. 第4段：商品编码 + 商品类型/数量 + 申请渠道 + 物流备注
-    // 5. 中英文逗号都兼容
+    function normalizeText(raw) {
+      return String(raw || '')
+        .trim()
+        .replace(/，/g, ',')
+        .replace(/\r\n/g, '\n')
+        .replace(/\n+/g, ' ')
+        .replace(/\s+/g, ' ');
+    }
+
     function parseOrder(raw) {
       if (!raw || !raw.trim()) return { ok: false, error: '请先输入订单文字' };
 
-      const norm = raw.trim().replace(/，/g, ',').replace(/\s+\n/g, '\n');
+      const norm = String(raw).trim().replace(/，/g, ',');
       const parts = norm.split(',').map(s => s.trim()).filter(Boolean);
-
       if (parts.length < 4) {
         return { ok: false, error: `格式不符：需要至少 4 段逗号分隔内容，当前只有 ${parts.length} 段` };
       }
@@ -424,36 +482,75 @@
       const name = parts[0];
       const phone = parts[1];
       const addr = parts[2];
-      const rest = parts.slice(3).join(',').trim();
+      const rest = parts.slice(3).join(' ').trim();
+      const tokens = normalizeText(rest).split(' ').filter(Boolean);
 
-      // rest 形如：
-      // 12100103000078 风轮1个 自仓库发 顺丰陆运到付
-      // 12222200001460 支架1个 佛山发
-      const segs = rest.split(/\s+/).filter(Boolean);
-      if (segs.length < 3) {
-        return { ok: false, error: '商品信息段格式不符：至少需要「商品编码 商品类型数量 申请渠道发」三段' };
+      if (tokens.length < 2) {
+        return { ok: false, error: '商品信息段格式不符：至少需要「商品编码 商品类型数量」' };
       }
 
-      const code = segs[0].trim();
-      const productRaw = segs[1].trim();
+      const code = tokens[0].trim();
+      let idx = 1;
 
-      // 商品类型 + 数量，例如：风轮1个 / 支架12个
-      let productType = productRaw;
+      // 商品类型与数量
+      let productRaw = tokens[idx] || '';
+      let productType = '';
       let qty = '';
-      const m = productRaw.match(/^(.+?)(\d+)(?:个)?$/);
+
+      // 支持：风轮1个 / 支架12个
+      let m = productRaw.match(/^(.+?)(\d+(?:\.\d+)?)(?:个)?$/);
       if (m) {
         productType = m[1].trim();
         qty = m[2].trim();
+        idx += 1;
+      } else if (/^\d+(?:\.\d+)?个?$/.test(tokens[idx + 1] || '')) {
+        // 支持：风轮 1个
+        productType = productRaw.trim();
+        qty = String(tokens[idx + 1]).replace(/个$/, '');
+        idx += 2;
       } else {
-        // 如果是“风轮 1个”被拆成两个 token，也做个兜底
-        const m2 = productRaw.match(/^(.+?)$/);
-        productType = m2 ? m2[1].trim() : productRaw;
+        productType = productRaw.trim();
+        qty = '1'; // 一条文字只会有一个商品，默认 1
+        idx += 1;
       }
 
-      const channelRaw = segs[2].trim();
-      const faIdx = channelRaw.lastIndexOf('发');
-      const channel = faIdx !== -1 ? channelRaw.slice(0, faIdx).trim() : channelRaw;
-      const logistics = segs.length >= 4 ? segs.slice(3).join(' ') : '';
+      const remaining = tokens.slice(idx);
+      let channel = '';
+      let houseCommercial = '';
+      let wechatSingle = '';
+      const logisticsTokens = [];
+
+      for (const token of remaining) {
+        const t = token.trim();
+        if (!t) continue;
+
+        if (t === '微信单') {
+          wechatSingle = '微信单';
+          continue;
+        }
+
+        if (t === '商用件' || t === '商用') {
+          houseCommercial = '商用';
+          continue;
+        }
+        if (t === '家用件' || t === '家用') {
+          houseCommercial = '家用';
+          continue;
+        }
+
+        if (!channel && t.endsWith('发')) {
+          const candidate = t.slice(0, -1).trim();
+          if (candidate) {
+            channel = candidate; // 例如：佛山发 -> 佛山
+            continue;
+          }
+        }
+
+        // 已经识别到渠道之后，剩下的都算物流备注
+        if (channel) logisticsTokens.push(t);
+      }
+
+      const logistics = logisticsTokens.join(' ').trim();
 
       const missing = [];
       if (!name) missing.push('收货姓名');
@@ -466,7 +563,21 @@
 
       if (missing.length) return { ok: false, error: '以下字段未能识别：' + missing.join('、') };
 
-      return { ok: true, data: { name, phone, addr, code, productType, qty, channel, logistics } };
+      return {
+        ok: true,
+        data: {
+          name,
+          phone,
+          addr,
+          code,
+          productType,
+          qty,
+          channel,
+          houseCommercial,
+          wechatSingle,
+          logistics
+        }
+      };
     }
 
     function setField(id, val, muted = false) {
@@ -474,6 +585,68 @@
       if (!el) return;
       el.className = 'field-value' + (muted ? ' muted' : '') + (!val ? ' empty' : '');
       el.textContent = val || (muted ? '无' : '未识别');
+    }
+
+    function findFieldIdByKeywords(keywords, options = {}) {
+      const names = Object.keys(fieldMetaMap);
+      const exact = options.exact || [];
+      for (const e of exact) {
+        if (fieldMetaMap[e]) return fieldMetaMap[e];
+      }
+      for (const k of keywords) {
+        for (const name of names) {
+          if (name === k) return fieldMetaMap[name];
+        }
+      }
+      for (const k of keywords) {
+        for (const name of names) {
+          if (name.includes(k)) return fieldMetaMap[name];
+        }
+      }
+      return '';
+    }
+
+    function detectFieldIds() {
+      return {
+        name: findFieldIdByKeywords(['收货姓名']),
+        phone: findFieldIdByKeywords(['收货电话']),
+        addr: findFieldIdByKeywords(['地址']),
+        code: findFieldIdByKeywords(['商品编码']),
+        type: findFieldIdByKeywords(['商品类型']),
+        qty: findFieldIdByKeywords(['物品数量']),
+        channel: findFieldIdByKeywords(['申请渠道']),
+        logistics: findFieldIdByKeywords(['物流备注']),
+        house: findFieldIdByKeywords(['家商用']),
+        wechat: findFieldIdByKeywords(['微信单']),
+        user: findFieldIdByKeywords(['填表人']),
+        date: findFieldIdByKeywords(['年月日'], { exact: ['申请日期（年月日）', '申请日期td（年月日）', '申请日期（年月日） '] }),
+        datetime: findFieldIdByKeywords(['时分秒'], { exact: ['申请日期（年月日时分秒）'] })
+      };
+    }
+
+    function optionValue(fieldType, text) {
+      if (fieldType === 3) return { text }; // 单选
+      if (fieldType === 4) return [{ text }]; // 多选
+      return text;
+    }
+
+    function setPreviewValues(data) {
+      const now = new Date();
+      const { dateStr, dateTimeStr } = formatDateParts(now);
+
+      setField('f-name', data.name);
+      setField('f-phone', data.phone);
+      setField('f-addr', data.addr);
+      setField('f-code', data.code);
+      setField('f-type', data.productType);
+      setField('f-qty', data.qty);
+      setField('f-channel', data.channel);
+      setField('f-house', data.houseCommercial || '');
+      setField('f-wechat', data.wechatSingle || '');
+      setField('f-user', currentUserName || '未识别');
+      setField('f-logistics', data.logistics, true);
+      setField('f-date', dateStr);
+      setField('f-datetime', dateTimeStr);
     }
 
     function doParse() {
@@ -491,19 +664,7 @@
       }
 
       parsed = result.data;
-      const now = new Date();
-      const { dateStr, dateTimeStr } = formatDateParts(now);
-
-      setField('f-name', parsed.name);
-      setField('f-phone', parsed.phone);
-      setField('f-addr', parsed.addr);
-      setField('f-code', parsed.code);
-      setField('f-type', parsed.productType);
-      setField('f-qty', parsed.qty);
-      setField('f-channel', parsed.channel);
-      setField('f-logistics', parsed.logistics, true);
-      setField('f-date', dateStr);
-      setField('f-datetime', dateTimeStr);
+      setPreviewValues(parsed);
 
       $('placeholder').style.display = 'none';
       $('fields').style.display = 'grid';
@@ -513,11 +674,7 @@
       badge.className = 'pill ok';
       badge.textContent = '识别正常';
 
-      if (sdkReady) {
-        $('confirmBtn').disabled = false;
-      } else {
-        $('confirmBtn').disabled = true;
-      }
+      $('confirmBtn').disabled = !sdkReady;
     }
 
     async function doConfirm() {
@@ -534,53 +691,64 @@
 
       const now = new Date();
       const { todayMs, nowMs } = formatDateParts(now);
+      const ids = detectFieldIds();
 
       try {
         $('confirmBtn').disabled = true;
         $('confirmBtn').textContent = '写入中…';
 
-        const table = currentTable;
-        const fieldMetaList = await table.getFieldMetaList();
-        const nameToId = {};
-        const nameToType = {};
-        for (const f of fieldMetaList) {
-          nameToId[f.name] = f.id;
-          nameToType[f.name] = f.type;
-        }
+        const fieldMetaList = await currentTable.getFieldMetaList();
+        const tableFieldTypeMap = {};
+        for (const f of fieldMetaList) tableFieldTypeMap[f.name] = f.type;
 
         const fields = {};
-        const add = (fieldName, value) => {
-          const id = nameToId[fieldName];
-          if (!id) {
-            log(`字段不存在，跳过：${fieldName}`);
-            return;
-          }
-          fields[id] = value;
+        const add = (fieldId, value) => {
+          if (!fieldId) return;
+          fields[fieldId] = value;
         };
 
-        // 文本字段
-        add('收货姓名', parsed.name);
-        add('收货电话', parsed.phone);
-        add('地址', parsed.addr);
-        add('商品编码', parsed.code);
-        add('商品类型', parsed.productType);
-        add('物流备注', parsed.logistics);
+        // 基础字段
+        add(ids.name, parsed.name);
+        add(ids.phone, parsed.phone);
+        add(ids.addr, parsed.addr);
+        add(ids.code, parsed.code);
+        add(ids.type, parsed.productType);
+        if (ids.qty) fields[ids.qty] = Number(parsed.qty) || 0;
+        if (ids.logistics) add(ids.logistics, parsed.logistics);
 
-        // 数字字段
-        if (nameToId['物品数量']) fields[nameToId['物品数量']] = Number(parsed.qty) || 0;
-
-        // 申请渠道：如果是单选字段，给 { text }；否则按文本写
-        if (nameToId['申请渠道']) {
-          fields[nameToId['申请渠道']] = nameToType['申请渠道'] === 3 ? { text: parsed.channel } : parsed.channel;
+        // 申请渠道：单选
+        if (ids.channel) {
+          const fieldName = Object.keys(fieldMetaMap).find(n => fieldMetaMap[n] === ids.channel) || '';
+          const fType = tableFieldTypeMap[fieldName];
+          fields[ids.channel] = optionValue(fType, parsed.channel);
         }
 
-        // 申请日期
-        if (nameToId['申请日期（年月日）']) fields[nameToId['申请日期（年月日）']] = todayMs;
-        if (nameToId['申请日期（年月日时分秒）']) fields[nameToId['申请日期（年月日时分秒）']] = nowMs;
+        // 家商用：单选
+        if (ids.house && parsed.houseCommercial) {
+          const fieldName = Object.keys(fieldMetaMap).find(n => fieldMetaMap[n] === ids.house) || '';
+          const fType = tableFieldTypeMap[fieldName];
+          fields[ids.house] = optionValue(fType, parsed.houseCommercial);
+        }
+
+        // 微信单：单选
+        if (ids.wechat && parsed.wechatSingle) {
+          const fieldName = Object.keys(fieldMetaMap).find(n => fieldMetaMap[n] === ids.wechat) || '';
+          const fType = tableFieldTypeMap[fieldName];
+          fields[ids.wechat] = optionValue(fType, parsed.wechatSingle);
+        }
+
+        // 填表人：优先写入当前账号显示名；取不到则写入 BaseUserId
+        if (ids.user) {
+          fields[ids.user] = currentUserName || '';
+        }
+
+        // 日期字段：一个填当天日期，一个填当前时分秒
+        if (ids.date) fields[ids.date] = todayMs;
+        if (ids.datetime) fields[ids.datetime] = nowMs;
 
         log('最终写入 fields：' + JSON.stringify(fields));
 
-        const recordId = await table.addRecord({ fields });
+        const recordId = await currentTable.addRecord({ fields });
         showMsg('success', `已写入「${currentTableName}」，recordId：${recordId}`);
         log('写入成功，recordId=' + recordId);
 
@@ -602,23 +770,21 @@
       $('fields').style.display = 'none';
       $('confirmBtn').disabled = !sdkReady;
       if (clearInput) $('input').value = '';
-      const ids = ['f-name','f-phone','f-addr','f-code','f-type','f-qty','f-channel','f-logistics','f-date','f-datetime'];
+      const ids = ['f-name','f-phone','f-addr','f-code','f-type','f-qty','f-channel','f-house','f-wechat','f-user','f-logistics','f-date','f-datetime'];
       for (const id of ids) $(id).textContent = '';
     }
 
-    // 暴露给按钮
     window.doParse = doParse;
     window.doConfirm = doConfirm;
     window.doReset = doReset;
 
-    // 初始化
     (async function main() {
       log('开始初始化…');
       try {
         await loadSDK();
       } catch (e) {
         log('初始化异常：' + (e?.message || e));
-        setStatus('err', '错误', '初始化失败。');
+        setStatus('err', '初始化失败。');
         showMsg('error', '初始化失败：' + (e?.message || e));
       }
     })();
