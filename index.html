@@ -250,7 +250,7 @@
   </div>
 
   <label>粘贴订单文字（支持中英文逗号）</label>
-  <textarea id="input" placeholder="例：陈文永，18825732781-2867，广东省 东莞市 虎门镇北栅东方大厦怡泰沐足2楼前台，12100103000078 风轮1个 商用件 福州发 顺丰陆运到付 微信单"></textarea>
+  <textarea id="input" placeholder="例：李洪川，17844719778-5944，四川省 眉山市 洪雅县，11002015002541 电机1个 佛山基地仓 福州发 顺丰陆运到付"></textarea>
 
   <div class="btn-row">
     <button onclick="doParse()">拆分预览</button>
@@ -274,9 +274,9 @@
       <div class="field"><div class="field-label">商品类型</div><div class="field-value" id="f-type"></div></div>
       <div class="field"><div class="field-label">物品数量</div><div class="field-value" id="f-qty"></div></div>
       <div class="field"><div class="field-label">申请渠道</div><div class="field-value" id="f-channel"></div></div>
+      <div class="field"><div class="field-label">仓库</div><div class="field-value muted" id="f-warehouse"></div></div>
       <div class="field"><div class="field-label">家商用</div><div class="field-value" id="f-house"></div></div>
       <div class="field"><div class="field-label">微信单</div><div class="field-value" id="f-wechat"></div></div>
-      <div class="field"><div class="field-label">填表人</div><div class="field-value" id="f-user"></div></div>
       <div class="field"><div class="field-label">申请日期（年月日）</div><div class="field-value" id="f-date"></div></div>
       <div class="field"><div class="field-label">申请日期（时分秒）</div><div class="field-value" id="f-datetime"></div></div>
       <div class="field"><div class="field-label">物流备注</div><div class="field-value muted" id="f-logistics"></div></div>
@@ -291,13 +291,16 @@
     let parsed = null;
     let currentTable = null;
     let currentTableName = '';
-    let currentUserName = '';
     let fieldMetaMap = {};
     let fieldTypeMap = {};
     const TARGET_TABLE_ID = 'tbllRfMWwtznRRJo';
 
     const $ = (id) => document.getElementById(id);
     const CHANNEL_OPTIONS = ['河南', '福州', '佛山', '自仓库', '南京'];
+
+    function isWarehouseToken(t) {
+      return t.endsWith('仓') && !t.endsWith('发');
+    }
 
     function log(msg) {
       const b = $('debugBox');
@@ -367,7 +370,6 @@
       }
 
       await refreshActiveTable();
-      await refreshCurrentUser();
     }
 
     async function refreshActiveTable() {
@@ -393,93 +395,6 @@
         showMsg('error', '已检测到 SDK，但无法读取固定表 ID：' + TARGET_TABLE_ID + '。请确认该表存在且当前账号有权限。');
         $('confirmBtn').disabled = true;
       }
-    }
-
-    async function refreshCurrentUser() {
-      try {
-        currentUserName = await resolveFillerName();
-        $('f-user').textContent = currentUserName || '未识别';
-        log('当前填表人：' + (currentUserName || '未识别'));
-      } catch (e) {
-        log('读取当前用户失败：' + (e?.message || e));
-      }
-    }
-
-    // 从「创建人」字段反查当前登录用户姓名；再回退到历史「填表人」记录
-    async function resolveFillerName() {
-      if (!currentTable || !bitable?.bridge) return '';
-
-      let baseUserId = '';
-      try {
-        baseUserId = await bitable.bridge.getBaseUserId();
-      } catch (_) {
-        try { baseUserId = await bitable.bridge.getUserId(); } catch (_) {}
-      }
-      if (!baseUserId) return '';
-
-      try {
-        const cached = await bitable.bridge.getData('fillerName:' + baseUserId);
-        if (typeof cached === 'string' && cached.trim()) return cached.trim();
-      } catch (_) {}
-
-      const metaList = await currentTable.getFieldMetaList();
-      const createdMeta = metaList.find(f => f.type === 1003 || f.type === 'CreatedUser');
-      const fillerMeta = metaList.find(f => f.name === '填表人');
-
-      let recordIds = [];
-      try {
-        recordIds = await currentTable.getRecordIdList();
-      } catch (_) {
-        return '';
-      }
-
-      const recentIds = recordIds.slice(-120).reverse();
-
-      if (createdMeta) {
-        const createdField = await currentTable.getField(createdMeta.id);
-        for (const rid of recentIds) {
-          try {
-            const users = await createdField.getValue(rid);
-            const list = Array.isArray(users) ? users : (users ? [users] : []);
-            const me = list.find(u => u && u.id === baseUserId);
-            if (me?.name) {
-              await cacheFillerName(baseUserId, me.name);
-              return me.name;
-            }
-          } catch (_) {}
-        }
-      }
-
-      if (fillerMeta) {
-        const fillerField = await currentTable.getField(fillerMeta.id);
-        for (const rid of recentIds) {
-          try {
-            const val = await fillerField.getValue(rid);
-            const text = typeof val === 'string' ? val.trim() : '';
-            if (!text) continue;
-            if (createdMeta) {
-              const createdField = await currentTable.getField(createdMeta.id);
-              const users = await createdField.getValue(rid);
-              const list = Array.isArray(users) ? users : (users ? [users] : []);
-              if (list.some(u => u && u.id === baseUserId)) {
-                await cacheFillerName(baseUserId, text);
-                return text;
-              }
-            } else {
-              await cacheFillerName(baseUserId, text);
-              return text;
-            }
-          } catch (_) {}
-        }
-      }
-
-      return '';
-    }
-
-    async function cacheFillerName(baseUserId, name) {
-      try {
-        await bitable.bridge.setData('fillerName:' + baseUserId, name);
-      } catch (_) {}
     }
 
     function pad2(n) { return String(n).padStart(2, '0'); }
@@ -550,6 +465,7 @@
 
       const remaining = tokens.slice(idx);
       let channel = '';
+      let warehouse = '';
       let houseCommercial = '';
       let wechatSingle = '';
       const logisticsTokens = [];
@@ -572,13 +488,13 @@
           continue;
         }
 
+        if (isWarehouseToken(t)) {
+          warehouse = t;
+          continue;
+        }
+
         if (!channel && t.endsWith('发')) {
-          let candidate = t.slice(0, -1).trim();
-          if (candidate === '自仓库') candidate = '自仓库';
-          if (candidate && CHANNEL_OPTIONS.includes(candidate)) {
-            channel = candidate;
-            continue;
-          }
+          const candidate = t.slice(0, -1).trim();
           if (candidate) {
             channel = candidate;
             continue;
@@ -611,6 +527,7 @@
           productType,
           qty,
           channel,
+          warehouse,
           houseCommercial,
           wechatSingle,
           logistics
@@ -664,9 +581,9 @@
       setField('f-type', data.productType);
       setField('f-qty', data.qty);
       setField('f-channel', data.channel);
+      setField('f-warehouse', data.warehouse || '', true);
       setField('f-house', data.houseCommercial || '');
       setField('f-wechat', data.wechatSingle || '');
-      setField('f-user', currentUserName || '未识别');
       setField('f-logistics', data.logistics, true);
       setField('f-date', dateStr);
       setField('f-datetime', dateTimeStr);
@@ -719,11 +636,6 @@
         $('confirmBtn').disabled = true;
         $('confirmBtn').textContent = '写入中…';
 
-        if (!currentUserName) {
-          currentUserName = await resolveFillerName();
-          $('f-user').textContent = currentUserName || '未识别';
-        }
-
         const cells = [];
         const pushCell = async (fieldName, value) => {
           try {
@@ -746,10 +658,10 @@
         await pushCell('商品类型', parsed.productType);
         await pushCell('物品数量', Number(parsed.qty) || 1);
         await pushCell('申请渠道', parsed.channel);
+        if (parsed.warehouse) await pushCell('仓库', parsed.warehouse);
         if (parsed.houseCommercial) await pushCell('家商用', parsed.houseCommercial);
         if (parsed.wechatSingle) await pushCell('微信单', parsed.wechatSingle);
         if (parsed.logistics) await pushCell('物流备注', parsed.logistics);
-        if (currentUserName) await pushCell('填表人', currentUserName);
 
         const dateOnlyName = resolveDateOnlyFieldName();
         const dateTimeName = resolveDateTimeFieldName();
@@ -764,38 +676,8 @@
 
         const recordId = await currentTable.addRecord(cells);
 
-        // 首次使用时可能取不到姓名，写入后从「创建人」回填「填表人」
-        if (!currentUserName && fieldMetaMap['填表人']) {
-          try {
-            const metaList = await currentTable.getFieldMetaList();
-            const createdMeta = metaList.find(f => f.type === 1003 || f.type === 'CreatedUser');
-            if (createdMeta) {
-              const createdField = await currentTable.getField(createdMeta.id);
-              const users = await createdField.getValue(recordId);
-              const list = Array.isArray(users) ? users : (users ? [users] : []);
-              const name = list[0]?.name || '';
-              if (name) {
-                const fillerField = await currentTable.getField('填表人');
-                await fillerField.setValue(recordId, name);
-                currentUserName = name;
-                $('f-user').textContent = name;
-                log('已从创建人回填填表人：' + name);
-              }
-            }
-          } catch (e) {
-            log('回填填表人失败：' + (e?.message || e));
-          }
-        }
-
         showMsg('success', `已写入固定表「${currentTableName}」，recordId：${recordId}`);
         log('写入成功，recordId=' + recordId);
-
-        if (currentUserName) {
-          try {
-            const baseUserId = await bitable.bridge.getBaseUserId();
-            await cacheFillerName(baseUserId, currentUserName);
-          } catch (_) {}
-        }
 
         doReset(false);
       } catch (e) {
@@ -816,7 +698,7 @@
       $('fields').style.display = 'none';
       $('confirmBtn').disabled = !sdkReady;
       if (clearInput) $('input').value = '';
-      const ids = ['f-name','f-phone','f-addr','f-code','f-type','f-qty','f-channel','f-house','f-wechat','f-user','f-logistics','f-date','f-datetime'];
+      const ids = ['f-name','f-phone','f-addr','f-code','f-type','f-qty','f-channel','f-warehouse','f-house','f-wechat','f-logistics','f-date','f-datetime'];
       for (const id of ids) $(id).textContent = '';
     }
 
