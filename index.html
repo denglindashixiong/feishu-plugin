@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>订单文字拆分</title>
-  <script src="https://cdn.jsdelivr.net/npm/@lark-base-open/js-sdk@1.2.1/dist/index.umd.js"></script>
+  <title>璁㈠崟鏂囧瓧鎷嗗垎</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -45,10 +44,7 @@
       color: #1f2329; font-family: inherit; outline: none; margin-top: 5px;
     }
     body.dark select { background: #333; border-color: #434343; color: #e0e0e0; }
-    .msg {
-      margin-top: 12px; padding: 9px 12px; border-radius: 6px;
-      font-size: 13px; display: none; line-height: 1.5;
-    }
+    .msg { margin-top: 12px; padding: 9px 12px; border-radius: 6px; font-size: 13px; display: none; line-height: 1.5; }
     .msg.error { background: #fff0f0; color: #d32f2f; display: block; }
     .msg.success { background: #e8f5e9; color: #2e7d32; display: block; }
     body.dark .msg.error { background: #3b1c1c; color: #ef9a9a; }
@@ -80,27 +76,27 @@
     .debug-box {
       margin-top: 10px; padding: 8px 10px; background: #f7f8fa;
       border-radius: 6px; font-size: 11px; color: #646a73;
-      word-break: break-all; line-height: 1.6; display: none;
-      max-height: 200px; overflow-y: auto;
+      word-break: break-all; line-height: 1.8; display: none;
+      max-height: 300px; overflow-y: auto;
     }
     body.dark .debug-box { background: #2a2a2a; color: #9e9e9e; }
   </style>
 </head>
 <body>
-  <h2>📦 订单文字拆分</h2>
+  <h2>馃摝 璁㈠崟鏂囧瓧鎷嗗垎</h2>
 
-  <label>粘贴订单文字（支持中英文逗号）</label>
-  <textarea id="input" placeholder="例：陈文永，18825732781-2867，广东省 东莞市 虎门镇，12100103000078 风轮1个 自仓库发 顺丰陆运到付"></textarea>
+  <label>绮樿创璁㈠崟鏂囧瓧锛堟敮鎸佷腑鑻辨枃閫楀彿锛?/label>
+  <textarea id="input" placeholder="渚嬶細闄堟枃姘革紝18825732781-2867锛屽箍涓滅渷 涓滆帪甯?铏庨棬闀囷紝12100103000078 椋庤疆1涓?鑷粨搴撳彂 椤轰赴闄嗚繍鍒颁粯"></textarea>
 
   <div class="btn-row">
-    <button onclick="doParse()">拆分预览</button>
-    <button class="primary" id="confirmBtn" onclick="doConfirm()" disabled>✓ 写入个人表</button>
-    <button class="ghost" onclick="doReset()">清空</button>
+    <button onclick="doParse()">鎷嗗垎棰勮</button>
+    <button class="primary" id="confirmBtn" onclick="doConfirm()" disabled>鉁?鍐欏叆涓汉琛?/button>
+    <button class="ghost" onclick="doReset()">娓呯┖</button>
   </div>
 
   <div class="table-wrap" id="tableWrap">
     <div class="divider"></div>
-    <label>写入到哪张表？</label>
+    <label>鍐欏叆鍒板摢寮犺〃锛?/label>
     <select id="tableSelect"></select>
   </div>
 
@@ -108,49 +104,68 @@
 
   <div class="card">
     <div class="card-header">
-      <span>拆分预览</span>
+      <span>鎷嗗垎棰勮</span>
       <span class="badge" id="badge" style="display:none"></span>
     </div>
-    <div class="placeholder" id="placeholder">请在上方输入文字后点击「拆分预览」</div>
+    <div class="placeholder" id="placeholder">璇峰湪涓婃柟杈撳叆鏂囧瓧鍚庣偣鍑汇€屾媶鍒嗛瑙堛€?/div>
     <div class="fields" id="fields" style="display:none">
-      <div class="field"><div class="field-label">收货姓名</div><div class="field-value" id="f-name"></div></div>
-      <div class="field"><div class="field-label">收货电话</div><div class="field-value" id="f-phone"></div></div>
-      <div class="field full"><div class="field-label">地址</div><div class="field-value" id="f-addr"></div></div>
-      <div class="field full"><div class="field-label">商品编码</div><div class="field-value" id="f-code"></div></div>
-      <div class="field"><div class="field-label">商品类型</div><div class="field-value" id="f-type"></div></div>
-      <div class="field"><div class="field-label">物品数量</div><div class="field-value" id="f-qty"></div></div>
-      <div class="field"><div class="field-label">申请渠道</div><div class="field-value" id="f-channel"></div></div>
-      <div class="field"><div class="field-label">物流备注</div><div class="field-value muted" id="f-logistics"></div></div>
-      <div class="field"><div class="field-label">申请日期（年月日）</div><div class="field-value" id="f-date"></div></div>
-      <div class="field"><div class="field-label">申请日期（年月日时分秒）</div><div class="field-value" id="f-datetime"></div></div>
+      <div class="field"><div class="field-label">鏀惰揣濮撳悕</div><div class="field-value" id="f-name"></div></div>
+      <div class="field"><div class="field-label">鏀惰揣鐢佃瘽</div><div class="field-value" id="f-phone"></div></div>
+      <div class="field full"><div class="field-label">鍦板潃</div><div class="field-value" id="f-addr"></div></div>
+      <div class="field full"><div class="field-label">鍟嗗搧缂栫爜</div><div class="field-value" id="f-code"></div></div>
+      <div class="field"><div class="field-label">鍟嗗搧绫诲瀷</div><div class="field-value" id="f-type"></div></div>
+      <div class="field"><div class="field-label">鐗╁搧鏁伴噺</div><div class="field-value" id="f-qty"></div></div>
+      <div class="field"><div class="field-label">鐢宠娓犻亾</div><div class="field-value" id="f-channel"></div></div>
+      <div class="field"><div class="field-label">鐗╂祦澶囨敞</div><div class="field-value muted" id="f-logistics"></div></div>
+      <div class="field"><div class="field-label">鐢宠鏃ユ湡锛堝勾鏈堟棩锛?/div><div class="field-value" id="f-date"></div></div>
+      <div class="field"><div class="field-label">鐢宠鏃ユ湡锛堝勾鏈堟棩鏃跺垎绉掞級</div><div class="field-value" id="f-datetime"></div></div>
     </div>
   </div>
 
-  <!-- 调试区，出错时展示详细信息 -->
   <div class="debug-box" id="debugBox"></div>
 
   <script>
+    // 鈹€鈹€ 椋炰功鎻掍欢SDK鐢遍涔︿富绔敞鍏ワ紝涓嶉渶瑕佸閮–DN锛岀洿鎺ョ敤window.bitable 鈹€鈹€
     let sdk = null;
     let parsed = null;
+    // 瀛楁鍚?鈫?{id, type} 鐨勬槧灏勶紝鍒濆鍖栨椂濉厖
+    let fieldMap = {};
 
-    // ── 飞书文本字段格式 ──
-    function tv(str) {
-      return [{ type: 'text', text: String(str) }];
+    function log(msg) {
+      const b = document.getElementById('debugBox');
+      b.style.display = 'block';
+      b.innerHTML += '<div>[' + new Date().toLocaleTimeString() + '] ' + msg + '</div>';
+      b.scrollTop = b.scrollHeight;
     }
 
-    // ── SDK 初始化 ──
-    async function initSDK() {
-      try {
-        sdk = window.bitable;
-        if (!sdk) { log('未检测到飞书SDK，演示模式'); return; }
+    // 鈹€鈹€ 绛夊緟椋炰功SDK娉ㄥ叆锛堟渶澶氱瓑5绉掞級鈹€鈹€
+    async function waitForBitable(timeout = 5000) {
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        if (window.bitable) return window.bitable;
+        await new Promise(r => setTimeout(r, 200));
+      }
+      return null;
+    }
 
+    async function initSDK() {
+      log('姝ｅ湪绛夊緟椋炰功SDK...');
+      sdk = await waitForBitable();
+      if (!sdk) {
+        log('鏈娴嬪埌椋炰功SDK锛屽綋鍓嶄负婕旂ず妯″紡锛堣鍦ㄩ涔﹀缁磋〃鏍兼彃浠跺唴浣跨敤锛?);
+        return;
+      }
+      log('椋炰功SDK鍔犺浇鎴愬姛');
+
+      try {
         const theme = await sdk.bridge.getTheme();
         applyTheme(theme);
         sdk.bridge.onThemeChange(e => applyTheme(e.data.theme));
+      } catch(e) { log('涓婚鑾峰彇澶辫触锛? + e.message); }
 
+      try {
         const metaList = await sdk.base.getTableMetaList();
-        log('找到 ' + metaList.length + ' 张表：' + metaList.map(m => m.name).join('、'));
-
+        log('鎵惧埌 ' + metaList.length + ' 寮犺〃锛? + metaList.map(m => m.name).join('銆?));
         const sel = document.getElementById('tableSelect');
         metaList.forEach(m => {
           const opt = document.createElement('option');
@@ -158,33 +173,27 @@
           opt.textContent = m.name;
           sel.appendChild(opt);
         });
-        if (metaList.length > 0) document.getElementById('tableWrap').style.display = 'block';
-      } catch (e) {
-        log('SDK初始化错误：' + e.message);
-      }
+        if (metaList.length > 0) {
+          document.getElementById('tableWrap').style.display = 'block';
+        }
+      } catch(e) { log('鑾峰彇琛ㄥ垪琛ㄥけ璐ワ細' + e.message); }
     }
 
     function applyTheme(t) { document.body.classList.toggle('dark', t === 'DARK'); }
 
-    function log(msg) {
-      const b = document.getElementById('debugBox');
-      b.style.display = 'block';
-      b.innerHTML += '<div>' + new Date().toLocaleTimeString() + ' ' + msg + '</div>';
-    }
-
-    // ── 拆分逻辑 ──
+    // 鈹€鈹€ 鎷嗗垎閫昏緫 鈹€鈹€
     function parseOrder(raw) {
-      if (!raw || !raw.trim()) return { ok: false, error: '请先输入订单文字' };
-      const norm = raw.trim().replace(/，/g, ',');
+      if (!raw || !raw.trim()) return { ok: false, error: '璇峰厛杈撳叆璁㈠崟鏂囧瓧' };
+      const norm = raw.trim().replace(/锛?g, ',');
       const parts = norm.split(',');
-      if (parts.length < 4) return { ok: false, error: '格式不符：需要至少4个逗号分隔段，当前只有 ' + parts.length + ' 段' };
+      if (parts.length < 4) return { ok: false, error: '鏍煎紡涓嶇锛氶渶瑕佽嚦灏?涓€楀彿鍒嗛殧娈碉紝褰撳墠鍙湁 ' + parts.length + ' 娈? };
 
       const name  = parts[0].trim();
       const phone = parts[1].trim();
       const addr  = parts[2].trim();
       const rest  = parts.slice(3).join(',').trim();
       const segs  = rest.split(/\s+/);
-      if (segs.length < 3) return { ok: false, error: '商品信息段格式不符，需要"编码 商品描述 渠道发"三段空格分隔' };
+      if (segs.length < 3) return { ok: false, error: '鍟嗗搧淇℃伅娈垫牸寮忎笉绗︼紝闇€瑕?缂栫爜 鍟嗗搧鎻忚堪 娓犻亾鍙?涓夋' };
 
       const code       = segs[0].trim();
       const productRaw = segs[1].trim();
@@ -193,19 +202,19 @@
       if (numMatch) { productType = numMatch[1].trim(); qty = numMatch[2].trim(); }
 
       const channelRaw = segs[2].trim();
-      const faIdx      = channelRaw.lastIndexOf('发');
+      const faIdx      = channelRaw.lastIndexOf('鍙?);
       const channel    = faIdx !== -1 ? channelRaw.substring(0, faIdx).trim() : channelRaw;
       const logistics  = segs.length >= 4 ? segs.slice(3).join('') : '';
 
       const missing = [];
-      if (!name) missing.push('收货姓名');
-      if (!phone) missing.push('收货电话');
-      if (!addr) missing.push('地址');
-      if (!code) missing.push('商品编码');
-      if (!productType) missing.push('商品类型');
-      if (!qty) missing.push('物品数量');
-      if (!channel) missing.push('申请渠道');
-      if (missing.length > 0) return { ok: false, error: '以下字段未能识别：' + missing.join('、') };
+      if (!name) missing.push('鏀惰揣濮撳悕');
+      if (!phone) missing.push('鏀惰揣鐢佃瘽');
+      if (!addr) missing.push('鍦板潃');
+      if (!code) missing.push('鍟嗗搧缂栫爜');
+      if (!productType) missing.push('鍟嗗搧绫诲瀷');
+      if (!qty) missing.push('鐗╁搧鏁伴噺');
+      if (!channel) missing.push('鐢宠娓犻亾');
+      if (missing.length > 0) return { ok: false, error: '浠ヤ笅瀛楁鏈兘璇嗗埆锛? + missing.join('銆?) };
 
       return { ok: true, data: { name, phone, addr, code, productType, qty, channel, logistics } };
     }
@@ -220,7 +229,7 @@
       const el = document.getElementById(id);
       if (!el) return;
       el.className = 'field-value' + (muted ? ' muted' : '') + (!val ? ' empty' : '');
-      el.textContent = val || (muted ? '无' : '未识别');
+      el.textContent = val || (muted ? '鏃? : '鏈瘑鍒?);
     }
 
     function doParse() {
@@ -232,8 +241,9 @@
       parsed = d;
 
       const now = new Date();
-      const dateStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
-      const datetimeStr = dateStr + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+      const pad = n => String(n).padStart(2, '0');
+      const dateStr     = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
+      const datetimeStr = dateStr + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
 
       setField('f-name', d.name);
       setField('f-phone', d.phone);
@@ -250,7 +260,7 @@
       const badge = document.getElementById('badge');
       badge.style.display = 'inline';
       badge.className = 'badge' + (allOk ? '' : ' warn');
-      badge.textContent = allOk ? '识别正常' : '部分字段未识别';
+      badge.textContent = allOk ? '璇嗗埆姝ｅ父' : '閮ㄥ垎瀛楁鏈瘑鍒?;
 
       document.getElementById('placeholder').style.display = 'none';
       document.getElementById('fields').style.display = 'grid';
@@ -261,87 +271,81 @@
       if (!parsed) return;
       hideMsg();
 
-      if (!sdk) { showMsg('success', '演示模式：识别成功（在飞书内使用才能写入）'); return; }
+      if (!sdk) {
+        showMsg('error', '鏈繛鎺ュ埌椋炰功SDK锛岃鍦ㄩ涔﹀缁磋〃鏍兼彃浠跺唴浣跨敤');
+        return;
+      }
 
       const sel = document.getElementById('tableSelect');
       const tableId = sel.value;
-      if (!tableId) { showMsg('error', '请先选择要写入的表'); return; }
+      if (!tableId) { showMsg('error', '璇峰厛閫夋嫨瑕佸啓鍏ョ殑琛?); return; }
       const tableName = sel.options[sel.selectedIndex].text;
 
       try {
         document.getElementById('confirmBtn').disabled = true;
-        document.getElementById('confirmBtn').textContent = '写入中...';
+        document.getElementById('confirmBtn').textContent = '鍐欏叆涓?..';
 
         const table = await sdk.base.getTableById(tableId);
 
-        // 先获取该表所有字段信息，确认字段类型
+        // 鈹€鈹€ 鍏抽敭锛氬厛鑾峰彇鎵€鏈夊瓧娈碉紝寤虹珛 瀛楁鍚嶁啋瀛楁ID 鍜?瀛楁鍚嶁啋瀛楁绫诲瀷 鐨勬槧灏?鈹€鈹€
         const fieldMetaList = await table.getFieldMetaList();
-        log('字段列表：' + fieldMetaList.map(f => f.name + '(' + f.type + ')').join('、'));
+        const nameToId   = {};  // 瀛楁鍚?鈫?瀛楁id
+        const nameToType = {};  // 瀛楁鍚?鈫?瀛楁绫诲瀷鏁板瓧
+        fieldMetaList.forEach(f => {
+          nameToId[f.name]   = f.id;
+          nameToType[f.name] = f.type;
+        });
+        log('瀛楁鏄犲皠寤虹珛瀹屾垚锛? + JSON.stringify(nameToId));
 
-        // 根据字段类型构建正确的写入格式
         const now = new Date();
-        const tsMs = now.getTime(); // 毫秒时间戳
-
-        // 当天零点时间戳（用于"年月日"字段）
         const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const nowMs   = now.getTime();
 
-        // 字段名 → 字段类型的映射
-        const typeMap = {};
-        fieldMetaList.forEach(f => { typeMap[f.name] = f.type; });
-
-        // 构建写入对象，根据字段实际类型决定格式
-        // 飞书字段类型：1=文本, 2=数字, 3=单选, 4=多选, 5=日期, 7=复选框, 11=人员 ...
-        function buildVal(fieldName, strVal) {
-          const t = typeMap[fieldName];
-          log('字段「' + fieldName + '」类型=' + t + '，值=' + strVal);
-          if (t === 2) return Number(strVal) || 0;   // 数字
-          if (t === 3) return { text: strVal };        // 单选
-          if (t === 4) return [{ text: strVal }];      // 多选
-          if (t === 5) return Number(strVal);           // 日期（时间戳）
-          // 文本类型(1)及其他
-          return tv(strVal);
+        // 鈹€鈹€ 鎸夊瓧娈电被鍨嬫瀯寤烘纭殑鍊兼牸寮?鈹€鈹€
+        // 椋炰功瀛楁绫诲瀷锛?=鏂囨湰 2=鏁板瓧 3=鍗曢€?4=澶氶€?5=鏃ユ湡鏃堕棿 7=澶嶉€夋
+        function makeVal(fieldName, strVal) {
+          const type = nameToType[fieldName];
+          log('  瀛楁銆? + fieldName + '銆峣d=' + nameToId[fieldName] + ' type=' + type + ' val=' + strVal);
+          if (type === 2) return Number(strVal) || 0;          // 鏁板瓧
+          if (type === 3) return { text: strVal };              // 鍗曢€?          if (type === 4) return [{ text: strVal }];            // 澶氶€?          if (type === 5) return Number(strVal);                // 鏃ユ湡锛堟椂闂存埑ms锛?          // 榛樿鏂囨湰绫诲瀷(1)锛氱洿鎺ヤ紶瀛楃涓?          return strVal;
         }
 
+        // 鈹€鈹€ 鐢ㄥ瓧娈礗D浣滀负key鏋勫缓fields瀵硅薄 鈹€鈹€
         const fields = {};
 
-        // 文本字段
-        if (typeMap['收货姓名'] !== undefined) fields['收货姓名'] = buildVal('收货姓名', parsed.name);
-        if (typeMap['收货电话'] !== undefined) fields['收货电话'] = buildVal('收货电话', parsed.phone);
-        if (typeMap['地址']     !== undefined) fields['地址']     = buildVal('地址', parsed.addr);
-        if (typeMap['商品编码'] !== undefined) fields['商品编码'] = buildVal('商品编码', parsed.code);
-        if (typeMap['商品类型'] !== undefined) fields['商品类型'] = buildVal('商品类型', parsed.productType);
-        if (typeMap['申请渠道'] !== undefined) fields['申请渠道'] = buildVal('申请渠道', parsed.channel);
-        if (parsed.logistics && typeMap['物流备注'] !== undefined) {
-          fields['物流备注'] = buildVal('物流备注', parsed.logistics);
+        function addField(fieldName, val) {
+          const id = nameToId[fieldName];
+          if (!id) { log('  鈿狅笍 瀛楁銆? + fieldName + '銆嶅湪褰撳墠琛ㄤ腑涓嶅瓨鍦紝璺宠繃'); return; }
+          fields[id] = val;
         }
 
-        // 数量字段（DOUBLE）
-        if (typeMap['物品数量'] !== undefined) {
-          const t = typeMap['物品数量'];
-          fields['物品数量'] = t === 2 ? (Number(parsed.qty) || 0) : buildVal('物品数量', parsed.qty);
-        }
+        addField('鏀惰揣濮撳悕', makeVal('鏀惰揣濮撳悕', parsed.name));
+        addField('鏀惰揣鐢佃瘽', makeVal('鏀惰揣鐢佃瘽', parsed.phone));
+        addField('鍦板潃',     makeVal('鍦板潃',     parsed.addr));
+        addField('鍟嗗搧缂栫爜', makeVal('鍟嗗搧缂栫爜', parsed.code));
+        addField('鍟嗗搧绫诲瀷', makeVal('鍟嗗搧绫诲瀷', parsed.productType));
+        addField('鐗╁搧鏁伴噺', makeVal('鐗╁搧鏁伴噺', parsed.qty));
+        addField('鐢宠娓犻亾', makeVal('鐢宠娓犻亾', parsed.channel));
+        if (parsed.logistics) addField('鐗╂祦澶囨敞', makeVal('鐗╂祦澶囨敞', parsed.logistics));
 
-        // 时间戳字段
-        if (typeMap['申请日期（年月日）'] !== undefined) {
-          fields['申请日期（年月日）'] = todayMs;
-        }
-        if (typeMap['申请日期（年月日时分秒）'] !== undefined) {
-          fields['申请日期（年月日时分秒）'] = tsMs;
-        }
+        // 鏃ユ湡瀛楁鍗曠嫭澶勭悊
+        if (nameToId['鐢宠鏃ユ湡锛堝勾鏈堟棩锛?])       fields[nameToId['鐢宠鏃ユ湡锛堝勾鏈堟棩锛?]]       = todayMs;
+        if (nameToId['鐢宠鏃ユ湡锛堝勾鏈堟棩鏃跺垎绉掞級']) fields[nameToId['鐢宠鏃ユ湡锛堝勾鏈堟棩鏃跺垎绉掞級']] = nowMs;
 
-        log('准备写入 fields：' + JSON.stringify(fields));
+        log('鏈€缁堝啓鍏ields锛? + JSON.stringify(fields));
 
-        const recordId = await table.addRecord(fields);
-        log('写入成功！recordId=' + recordId);
-        showMsg('success', '✓ 已写入「' + tableName + '」— ' + parsed.name + ' 的订单');
+        // 鈹€鈹€ 姝ｇ‘鐨刟ddRecord璋冪敤锛氫紶 {fields: {...}} 鈹€鈹€
+        const recordId = await table.addRecord({ fields });
+        log('鉁?鍐欏叆鎴愬姛锛乺ecordId=' + recordId);
+        showMsg('success', '鉁?宸插啓鍏ャ€? + tableName + '銆嶁€?' + parsed.name + ' 鐨勮鍗?);
         doReset();
 
       } catch (err) {
-        log('❌ 写入失败：' + err.message);
+        log('鉂?鍐欏叆澶辫触锛? + err.message);
         if (err.stack) log('Stack: ' + err.stack);
-        showMsg('error', '写入失败：' + err.message);
+        showMsg('error', '鍐欏叆澶辫触锛? + err.message);
         document.getElementById('confirmBtn').disabled = false;
-        document.getElementById('confirmBtn').textContent = '✓ 写入个人表';
+        document.getElementById('confirmBtn').textContent = '鉁?鍐欏叆涓汉琛?;
       }
     }
 
@@ -351,7 +355,7 @@
       document.getElementById('fields').style.display = 'none';
       document.getElementById('badge').style.display = 'none';
       document.getElementById('confirmBtn').disabled = true;
-      document.getElementById('confirmBtn').textContent = '✓ 写入个人表';
+      document.getElementById('confirmBtn').textContent = '鉁?鍐欏叆涓汉琛?;
       parsed = null;
     }
 
@@ -359,6 +363,7 @@
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') doParse();
     });
 
+    // 鍚姩鏃剁瓑寰呴涔DK娉ㄥ叆
     initSDK();
   </script>
 </body>
