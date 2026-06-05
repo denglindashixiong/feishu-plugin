@@ -309,7 +309,10 @@
     let currentTableName = '';
     let inventoryTable = null;
     let inventoryTableName = '';
+    let inventoryCodeFieldId = '';
+    let inventoryQtyFieldId = '';
     let inventoryCache = {};
+    let inventoryFullyLoaded = false;
     let fieldMetaMap = {};
     let fieldTypeMap = {};
     const TARGET_TABLE_ID = 'tbllRfMWwtznRRJo';
@@ -419,54 +422,144 @@
       }
     }
 
+    function normalizeProductCode(code) {
+      return String(code ?? '')
+        .trim()
+        .replace(/\s+/g, '')
+        .replace(/\.0+$/, '');
+    }
+
+    function cellToText(val) {
+      if (val == null) return '';
+      if (typeof val === 'string') return val.trim();
+      if (typeof val === 'number') return String(Math.trunc(val));
+      if (Array.isArray(val)) {
+        return val.map((seg) => (seg && seg.text != null ? String(seg.text) : '')).join('').trim();
+      }
+      if (typeof val === 'object' && val.text != null) return String(val.text).trim();
+      return String(val).trim();
+    }
+
+    function cellToNumber(val) {
+      if (val == null) return 0;
+      if (typeof val === 'number' && Number.isFinite(val)) return val;
+      const text = cellToText(val).replace(/,/g, '');
+      const num = parseFloat(text);
+      return Number.isFinite(num) ? num : 0;
+    }
+
+    async function loadInventoryPage(pageToken) {
+      return await inventoryTable.getRecordsByPage({
+        pageSize: 200,
+        pageToken,
+        stringValue: true,
+      });
+    }
+
     async function refreshInventoryTable() {
       inventoryTable = null;
       inventoryTableName = '';
+      inventoryCodeFieldId = '';
+      inventoryQtyFieldId = '';
       inventoryCache = {};
+      inventoryFullyLoaded = false;
 
       try {
-        const tableList = await bitable.base.getTableMetaList();
-        const invMeta = tableList.find(t => t.name === '库存表' || t.name.includes('库存'));
-        if (!invMeta) {
-          log('未找到库存表，自仓库渠道将无法查询库存');
+        inventoryTable = await bitable.base.getTableByName('库存表');
+        const meta = await inventoryTable.getMeta();
+        inventoryTableName = meta?.name || '库存表';
+        log(`已连接库存表：${inventoryTableName}`);
+
+        const metaList = await inventoryTable.getFieldMetaList();
+        const codeMeta = metaList.find((f) => f.name === INVENTORY_CODE_FIELD);
+        const qtyMeta = metaList.find((f) => f.name === INVENTORY_QTY_FIELD);
+
+        if (!codeMeta || !qtyMeta) {
+          log('库存表字段未找到，需要：' + INVENTORY_CODE_FIELD + '、' + INVENTORY_QTY_FIELD);
+          log('库存表现有字段：' + metaList.map((f) => f.name).join('、'));
+          inventoryTable = null;
           return;
         }
 
-        inventoryTable = await bitable.base.getTableById(invMeta.id);
-        inventoryTableName = invMeta.name;
-        log(`已连接库存表：${inventoryTableName}`);
+        inventoryCodeFieldId = codeMeta.id;
+        inventoryQtyFieldId = qtyMeta.id;
 
-        const codeField = await inventoryTable.getField(INVENTORY_CODE_FIELD);
-        const qtyField = await inventoryTable.getField(INVENTORY_QTY_FIELD);
-        const recordIds = await inventoryTable.getRecordIdList();
+        let pageToken;
+        let pageCount = 0;
+        let rowCount = 0;
+        let hasMore = true;
 
-        for (const rid of recordIds) {
-          try {
-            const codeVal = await codeField.getValue(rid);
-            const code = String(codeVal ?? '').trim();
+        while (hasMore) {
+          const res = await loadInventoryPage(pageToken);
+          const records = res.records || [];
+          pageCount += 1;
+
+          for (const rec of records) {
+            const code = normalizeProductCode(cellToText(rec.fields[inventoryCodeFieldId]));
             if (!code) continue;
-            const qtyVal = await qtyField.getValue(rid);
-            const qty = Number(qtyVal);
-            inventoryCache[code] = Number.isFinite(qty) ? qty : 0;
-          } catch (_) {}
+            const qty = cellToNumber(rec.fields[inventoryQtyFieldId]);
+            inventoryCache[code] = qty;
+            rowCount += 1;
+          }
+
+          hasMore = !!res.hasMore;
+          pageToken = res.pageToken;
         }
 
-        log(`库存缓存已加载，共 ${Object.keys(inventoryCache).length} 条编码`);
+        inventoryFullyLoaded = true;
+        log(`库存缓存已加载：${pageCount} 页，${rowCount} 行，${Object.keys(inventoryCache).length} 个唯一编码（支持最多约 1 万条）`);
       } catch (e) {
         log('加载库存表失败：' + (e?.message || e));
+        inventoryTable = null;
+        inventoryFullyLoaded = false;
       }
     }
 
-    function lookupInventoryStock(productCode) {
-      const code = String(productCode || '').trim();
-      if (!code || !inventoryTable) {
+    async function findStockByCode(productCode) {
+      const code = normalizeProductCode(productCode);
+      if (!code || !inventoryTable || !inventoryCodeFieldId) {
         return { found: false, qty: 0, hasStock: false };
       }
-      if (!Object.prototype.hasOwnProperty.call(inventoryCache, code)) {
+
+      if (Object.prototype.hasOwnProperty.call(inventoryCache, code)) {
+        const qty = inventoryCache[code];
+        return { found: true, qty, hasStock: qty > 0 };
+      }
+
+      if (inventoryFullyLoaded) {
+        log(`编码 ${code} 不在库存表（已加载全部 ${Object.keys(inventoryCache).length} 条）`);
         return { found: false, qty: 0, hasStock: false };
       }
-      const qty = inventoryCache[code];
-      return { found: true, qty, hasStock: qty > 0 };
+
+      log(`缓存未完整，正在检索编码 ${code}…`);
+      const codeField = await inventoryTable.getField(inventoryCodeFieldId);
+
+      let pageToken;
+      let hasMore = true;
+      while (hasMore) {
+        const res = await loadInventoryPage(pageToken);
+        for (const rec of res.records || []) {
+          let rowCode = normalizeProductCode(cellToText(rec.fields[inventoryCodeFieldId]));
+          if (!rowCode) {
+            try {
+              rowCode = normalizeProductCode(await codeField.getCellString(rec.recordId));
+            } catch (_) {}
+          }
+          const qty = cellToNumber(rec.fields[inventoryQtyFieldId]);
+
+          if (rowCode) inventoryCache[rowCode] = qty;
+
+          if (rowCode === code) {
+            log(`检索命中：${code}，数量=${qty}`);
+            return { found: true, qty, hasStock: qty > 0 };
+          }
+        }
+        hasMore = !!res.hasMore;
+        pageToken = res.pageToken;
+      }
+
+      log(`库存表未找到编码：${code}`);
+      return { found: false, qty: 0, hasStock: false };
     }
 
     function pad2(n) { return String(n).padStart(2, '0'); }
@@ -632,7 +725,7 @@
 
       stockRow.classList.add('visible');
 
-      const stock = lookupInventoryStock(data.code);
+      const stock = await findStockByCode(data.code);
       if (!stock.found || stock.qty <= 0) {
         setStockField('f-has-stock', '无', true);
         setStockField('f-stock-qty', '0', true);
