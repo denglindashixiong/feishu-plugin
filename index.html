@@ -7,228 +7,85 @@
   <script src="https://unpkg.com/@lark-base-open/js-sdk@1.2.1/dist/index.umd.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Tahoma,
         "PingFang SC", "Microsoft Yahei", Arial, sans-serif;
-      font-size: 14px;
-      color: #1f2329;
-      background: #fff;
-      padding: 16px;
+      font-size: 14px; color: #1f2329; background: #fff; padding: 16px;
     }
-
-    /* 深色模式 */
-    body.dark {
-      background: #252525;
-      color: #e0e0e0;
-    }
-
-    h2 {
-      font-size: 16px;
-      font-weight: 500;
-      margin-bottom: 14px;
-      color: inherit;
-    }
-
-    label {
-      display: block;
-      font-size: 12px;
-      color: #8f959e;
-      margin-bottom: 5px;
-    }
+    body.dark { background: #252525; color: #e0e0e0; }
+    h2 { font-size: 16px; font-weight: 500; margin-bottom: 14px; }
+    label { display: block; font-size: 12px; color: #8f959e; margin-bottom: 5px; }
     body.dark label { color: #9e9e9e; }
-
     textarea {
-      width: 100%;
-      min-height: 90px;
-      padding: 8px 10px;
-      border: 1px solid #dee0e3;
-      border-radius: 6px;
-      font-size: 13px;
-      line-height: 1.6;
-      resize: vertical;
-      background: #fff;
-      color: #1f2329;
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.15s;
+      width: 100%; min-height: 90px; padding: 8px 10px;
+      border: 1px solid #dee0e3; border-radius: 6px;
+      font-size: 13px; line-height: 1.6; resize: vertical;
+      background: #fff; color: #1f2329; font-family: inherit; outline: none;
     }
     textarea:focus { border-color: #1456f0; }
-    body.dark textarea {
-      background: #333;
-      border-color: #434343;
-      color: #e0e0e0;
-    }
-
-    .btn-row {
-      display: flex;
-      gap: 8px;
-      margin-top: 10px;
-    }
-
+    body.dark textarea { background: #333; border-color: #434343; color: #e0e0e0; }
+    .btn-row { display: flex; gap: 8px; margin-top: 10px; }
     button {
-      padding: 7px 16px;
-      border-radius: 6px;
-      border: 1px solid #dee0e3;
-      font-size: 13px;
-      cursor: pointer;
-      background: #fff;
-      color: #1f2329;
-      font-family: inherit;
-      transition: background 0.15s;
+      padding: 7px 16px; border-radius: 6px; border: 1px solid #dee0e3;
+      font-size: 13px; cursor: pointer; background: #fff; color: #1f2329;
+      font-family: inherit; transition: background 0.15s;
     }
     button:hover { background: #f2f3f5; }
-    button.primary {
-      background: #1456f0;
-      color: #fff;
-      border-color: transparent;
-    }
+    button.primary { background: #1456f0; color: #fff; border-color: transparent; }
     button.primary:hover { background: #0e48d0; }
-    button.primary:disabled {
-      background: #a0b4f7;
-      cursor: not-allowed;
-    }
-    button.ghost {
-      margin-left: auto;
-      color: #8f959e;
-      border-color: transparent;
-      background: transparent;
-    }
-    button.ghost:hover { background: #f2f3f5; }
-
-    body.dark button {
-      background: #333;
-      border-color: #434343;
-      color: #e0e0e0;
-    }
-    body.dark button:hover { background: #3a3a3a; }
+    button.primary:disabled { background: #a0b4f7; cursor: not-allowed; }
+    button.ghost { margin-left: auto; color: #8f959e; border-color: transparent; background: transparent; }
+    body.dark button { background: #333; border-color: #434343; color: #e0e0e0; }
     body.dark button.primary { background: #4571e1; border-color: transparent; color: #fff; }
-    body.dark button.primary:hover { background: #3560c8; }
     body.dark button.primary:disabled { background: #2c3e6e; }
-
-    /* 预览卡片 */
-    .card {
-      border: 1px solid #dee0e3;
-      border-radius: 8px;
-      overflow: hidden;
-      margin-top: 14px;
+    .table-wrap { margin-top: 12px; display: none; }
+    select {
+      width: 100%; padding: 7px 10px; border: 1px solid #dee0e3;
+      border-radius: 6px; font-size: 13px; background: #fff;
+      color: #1f2329; font-family: inherit; outline: none;
     }
+    body.dark select { background: #333; border-color: #434343; color: #e0e0e0; }
+    .msg {
+      margin-top: 12px; padding: 9px 12px; border-radius: 6px;
+      font-size: 13px; display: none;
+    }
+    .msg.error { background: #fff0f0; color: #d32f2f; display: block; }
+    .msg.success { background: #e8f5e9; color: #2e7d32; display: block; }
+    body.dark .msg.error { background: #3b1c1c; color: #ef9a9a; }
+    body.dark .msg.success { background: #1b2e1b; color: #a5d6a7; }
+    .card { border: 1px solid #dee0e3; border-radius: 8px; overflow: hidden; margin-top: 14px; }
     body.dark .card { border-color: #434343; }
-
     .card-header {
-      padding: 8px 14px;
-      background: #f2f3f5;
-      font-size: 12px;
-      font-weight: 500;
-      color: #646a73;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      padding: 8px 14px; background: #f2f3f5; font-size: 12px; font-weight: 500;
+      color: #646a73; display: flex; align-items: center; justify-content: space-between;
       border-bottom: 1px solid #dee0e3;
     }
-    body.dark .card-header {
-      background: #2e2e2e;
-      color: #9e9e9e;
-      border-color: #434343;
-    }
-
-    .badge {
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 99px;
-      background: #e8f5e9;
-      color: #2e7d32;
-    }
+    body.dark .card-header { background: #2e2e2e; color: #9e9e9e; border-color: #434343; }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: #e8f5e9; color: #2e7d32; }
     .badge.warn { background: #fff8e1; color: #f57f17; }
-
-    .placeholder {
-      padding: 24px;
-      text-align: center;
-      color: #8f959e;
-      font-size: 13px;
-    }
-
-    .fields {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-    }
-
-    .field {
-      padding: 10px 14px;
-      border-bottom: 1px solid #dee0e3;
-      border-right: 1px solid #dee0e3;
-    }
+    .placeholder { padding: 24px; text-align: center; color: #8f959e; font-size: 13px; }
+    .fields { display: grid; grid-template-columns: 1fr 1fr; }
+    .field { padding: 10px 14px; border-bottom: 1px solid #dee0e3; border-right: 1px solid #dee0e3; }
     .field.full { grid-column: 1 / -1; border-right: none; }
     .field:nth-child(even):not(.full) { border-right: none; }
-    .field:last-child,
-    .field:nth-last-child(2):not(.full) { border-bottom: none; }
-
+    .field:last-child, .field:nth-last-child(2):not(.full) { border-bottom: none; }
     body.dark .field { border-color: #3a3a3a; }
-
-    .field-label {
-      font-size: 10px;
-      color: #8f959e;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-bottom: 3px;
-    }
-    .field-value {
-      font-size: 13px;
-      font-weight: 500;
-      color: #1f2329;
-      word-break: break-all;
-    }
+    .field-label { font-size: 10px; color: #8f959e; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+    .field-value { font-size: 13px; font-weight: 500; color: #1f2329; word-break: break-all; }
     body.dark .field-value { color: #e0e0e0; }
     .field-value.empty { color: #c9cdd4; font-weight: 400; font-style: italic; }
     .field-value.muted { color: #8f959e; font-weight: 400; }
-
-    /* 消息提示 */
-    .msg {
-      margin-top: 12px;
-      padding: 9px 12px;
-      border-radius: 6px;
-      font-size: 13px;
-      display: none;
-      align-items: center;
-      gap: 6px;
-    }
-    .msg.error { background: #fff0f0; color: #d32f2f; display: flex; }
-    .msg.success { background: #e8f5e9; color: #2e7d32; display: flex; }
-    body.dark .msg.error { background: #3b1c1c; color: #ef9a9a; }
-    body.dark .msg.success { background: #1b2e1b; color: #a5d6a7; }
-
-    /* 选表提示 */
-    .table-select {
-      margin-top: 10px;
-      display: none;
-    }
-    .table-select label { margin-bottom: 5px; }
-    select {
-      width: 100%;
-      padding: 7px 10px;
-      border: 1px solid #dee0e3;
-      border-radius: 6px;
-      font-size: 13px;
-      background: #fff;
-      color: #1f2329;
-      font-family: inherit;
-      outline: none;
-    }
-    body.dark select {
-      background: #333;
-      border-color: #434343;
-      color: #e0e0e0;
-    }
-
-    .divider { height: 1px; background: #dee0e3; margin: 14px 0; }
+    .divider { height: 1px; background: #dee0e3; margin: 12px 0; }
     body.dark .divider { background: #3a3a3a; }
+    .debug { margin-top: 10px; padding: 8px 10px; background: #f7f8fa; border-radius: 6px; font-size: 11px; color: #8f959e; display: none; word-break: break-all; }
+    body.dark .debug { background: #2a2a2a; }
   </style>
 </head>
 <body>
   <h2>📦 订单文字拆分</h2>
 
   <label>粘贴订单文字（支持中英文逗号）</label>
-  <textarea id="input" placeholder="例：陈文永，18825732781-2867，广东省 东莞市 虎门镇北栅东方大厦，12100103000078 风轮1个 自仓库发&#10;例：杜叶锋，18466820784-4500，上海 上海市 金山区，12222200001460 支架1个 佛山发 顺丰陆运到付"></textarea>
+  <textarea id="input" placeholder="例：陈文永，18825732781-2867，广东省 东莞市 虎门镇，12100103000078 风轮1个 自仓库发"></textarea>
 
   <div class="btn-row">
     <button onclick="doParse()">拆分预览</button>
@@ -236,18 +93,16 @@
     <button class="ghost" onclick="doReset()">清空</button>
   </div>
 
-  <!-- 选表下拉（初始化时填充） -->
-  <div class="table-select" id="tableSelectWrap">
+  <div class="table-wrap" id="tableWrap">
     <div class="divider"></div>
     <label>写入到哪张表？</label>
     <select id="tableSelect"></select>
   </div>
 
-  <!-- 错误/成功提示 -->
   <div class="msg" id="msgBox"></div>
+  <div class="debug" id="debugBox"></div>
 
-  <!-- 预览卡片 -->
-  <div class="card" id="card" style="margin-top:14px">
+  <div class="card">
     <div class="card-header">
       <span>拆分预览</span>
       <span class="badge" id="badge" style="display:none"></span>
@@ -266,75 +121,63 @@
   </div>
 
   <script>
-    // ── 飞书 SDK 初始化 ──────────────────────────
-    let bitable_sdk = null;
-    let tableList = [];   // [{id, name}]
+    let sdk = null;
     let parsed = null;
 
+    // ── 文本字段格式：飞书多行文本要传数组 ──
+    function textVal(str) {
+      return [{ type: 'text', text: str }];
+    }
+
+    // ── SDK 初始化 ──
     async function initSDK() {
       try {
-        // SDK 挂载在 window.bitable
-        bitable_sdk = window.bitable;
-        if (!bitable_sdk) return;
+        sdk = window.bitable;
+        if (!sdk) { showDebug('未检测到飞书SDK，当前为演示模式'); return; }
 
-        // 主题适配
-        const theme = await bitable_sdk.bridge.getTheme();
+        const theme = await sdk.bridge.getTheme();
         applyTheme(theme);
-        bitable_sdk.bridge.onThemeChange(e => applyTheme(e.data.theme));
+        sdk.bridge.onThemeChange(e => applyTheme(e.data.theme));
 
-        // 获取所有表
-        const metaList = await bitable_sdk.base.getTableMetaList();
-        tableList = metaList.map(m => ({ id: m.id, name: m.name }));
-
-        // 填充下拉
+        // 获取所有表填入下拉
+        const metaList = await sdk.base.getTableMetaList();
         const sel = document.getElementById('tableSelect');
-        tableList.forEach(t => {
+        metaList.forEach(m => {
           const opt = document.createElement('option');
-          opt.value = t.id;
-          opt.textContent = t.name;
+          opt.value = m.id;
+          opt.textContent = m.name;
           sel.appendChild(opt);
         });
 
-        if (tableList.length > 0) {
-          document.getElementById('tableSelectWrap').style.display = 'block';
+        if (metaList.length > 0) {
+          document.getElementById('tableWrap').style.display = 'block';
+          showDebug('SDK加载成功，共找到 ' + metaList.length + ' 张表：' + metaList.map(m => m.name).join('、'));
         }
       } catch (e) {
-        // 不在飞书环境内（比如直接打开网页），静默处理
-        console.log('非飞书环境，SDK 未加载');
+        showDebug('SDK初始化出错：' + e.message);
       }
     }
 
-    function applyTheme(theme) {
-      if (theme === 'DARK') {
-        document.body.classList.add('dark');
-      } else {
-        document.body.classList.remove('dark');
-      }
+    function applyTheme(t) {
+      document.body.classList.toggle('dark', t === 'DARK');
     }
 
-    // ── 拆分逻辑 ─────────────────────────────────
+    // ── 拆分逻辑 ──
     function parseOrder(raw) {
       if (!raw || !raw.trim()) return { ok: false, error: '请先输入订单文字' };
-
       const normalized = raw.trim().replace(/，/g, ',');
       const parts = normalized.split(',');
-
-      if (parts.length < 4) {
-        return { ok: false, error: `格式不符：需要至少 4 个逗号分隔段，当前只有 ${parts.length} 段` };
-      }
+      if (parts.length < 4) return { ok: false, error: `格式不符：需要至少4个逗号分隔段，当前只有 ${parts.length} 段` };
 
       const name  = parts[0].trim();
       const phone = parts[1].trim();
       const addr  = parts[2].trim();
       const rest  = parts.slice(3).join(',').trim();
+      const segs  = rest.split(/\s+/);
 
-      const segs = rest.split(/\s+/);
-      if (segs.length < 3) {
-        return { ok: false, error: `商品信息段格式不符，需要"编码 商品描述 渠道发"三段空格分隔` };
-      }
+      if (segs.length < 3) return { ok: false, error: '商品信息段格式不符，需要"编码 商品描述 渠道发"三段空格分隔' };
 
       const code = segs[0].trim();
-
       const productRaw = segs[1].trim();
       const numMatch = productRaw.match(/^([^\d]+)(\d+)/);
       let productType = productRaw, qty = '';
@@ -343,7 +186,6 @@
       const channelRaw = segs[2].trim();
       const faIdx = channelRaw.lastIndexOf('发');
       const channel = faIdx !== -1 ? channelRaw.substring(0, faIdx).trim() : channelRaw;
-
       const logistics = segs.length >= 4 ? segs.slice(3).join('') : '';
 
       const missing = [];
@@ -354,24 +196,23 @@
       if (!productType) missing.push('商品类型');
       if (!qty) missing.push('商品数量');
       if (!channel) missing.push('申请渠道');
-
-      if (missing.length > 0) {
-        return { ok: false, error: `以下字段未能识别：${missing.join('、')}` };
-      }
+      if (missing.length > 0) return { ok: false, error: '以下字段未能识别：' + missing.join('、') };
 
       return { ok: true, data: { name, phone, addr, code, productType, qty, channel, logistics } };
     }
 
-    // ── UI 操作 ───────────────────────────────────
+    // ── UI 辅助 ──
     function showMsg(type, text) {
-      const box = document.getElementById('msgBox');
-      box.className = 'msg ' + type;
-      box.textContent = text;
+      const b = document.getElementById('msgBox');
+      b.className = 'msg ' + type;
+      b.textContent = text;
     }
-    function hideMsg() {
-      document.getElementById('msgBox').className = 'msg';
+    function hideMsg() { document.getElementById('msgBox').className = 'msg'; }
+    function showDebug(text) {
+      const b = document.getElementById('debugBox');
+      b.style.display = 'block';
+      b.textContent = '调试：' + text;
     }
-
     function setField(id, val, muted) {
       const el = document.getElementById(id);
       el.className = 'field-value' + (muted ? ' muted' : '') + (!val ? ' empty' : '');
@@ -380,17 +221,11 @@
 
     function doParse() {
       hideMsg();
-      const raw = document.getElementById('input').value;
-      const result = parseOrder(raw);
-
-      if (!result.ok) {
-        showMsg('error', result.error);
-        return;
-      }
+      const result = parseOrder(document.getElementById('input').value);
+      if (!result.ok) { showMsg('error', result.error); return; }
 
       const d = result.data;
       parsed = d;
-
       setField('f-name', d.name);
       setField('f-phone', d.phone);
       setField('f-addr', d.addr);
@@ -415,41 +250,46 @@
       if (!parsed) return;
       hideMsg();
 
-      // 不在飞书环境
-      if (!bitable_sdk) {
-        showMsg('success', '演示模式：数据识别成功（请在飞书多维表格内使用以写入数据）');
+      if (!sdk) {
+        showMsg('success', '演示模式：识别成功（在飞书内使用才能写入）');
         return;
       }
 
       const sel = document.getElementById('tableSelect');
       const tableId = sel.value;
-      if (!tableId) {
-        showMsg('error', '请先选择要写入的表');
-        return;
-      }
+      if (!tableId) { showMsg('error', '请先选择要写入的表'); return; }
+
+      const tableName = sel.options[sel.selectedIndex].text;
 
       try {
         document.getElementById('confirmBtn').disabled = true;
         document.getElementById('confirmBtn').textContent = '写入中...';
 
-        const table = await bitable_sdk.base.getTableById(tableId);
+        const table = await sdk.base.getTableById(tableId);
+
+        // ── 关键：飞书文本字段需要传 [{type:'text', text:'值'}] 格式 ──
         const fields = {
-          '收货姓名': parsed.name,
-          '收货电话': parsed.phone,
-          '收货地址': parsed.addr,
-          '商品编码': parsed.code,
-          '商品类型': parsed.productType,
-          '商品数量': parsed.qty,
-          '申请渠道': parsed.channel,
+          '收货姓名': textVal(parsed.name),
+          '收货电话': textVal(parsed.phone),
+          '收货地址': textVal(parsed.addr),
+          '商品编码': textVal(parsed.code),
+          '商品类型': textVal(parsed.productType),
+          '商品数量': textVal(parsed.qty),
+          '申请渠道': textVal(parsed.channel),
         };
-        if (parsed.logistics) fields['物流方式'] = parsed.logistics;
+        if (parsed.logistics) fields['物流方式'] = textVal(parsed.logistics);
 
-        await table.addRecord({ fields });
+        showDebug('准备写入字段：' + JSON.stringify(Object.keys(fields)));
 
-        showMsg('success', `✓ 已写入「${sel.options[sel.selectedIndex].text}」— ${parsed.name} 的订单`);
+        // ── 正确的 addRecord 调用方式 ──
+        const recordId = await table.addRecord(fields);
+
+        showDebug('写入成功，recordId：' + recordId);
+        showMsg('success', `✓ 已写入「${tableName}」— ${parsed.name} 的订单`);
         doReset();
       } catch (err) {
-        showMsg('error', `写入失败：${err.message}（请确认表格字段名与工具一致）`);
+        showDebug('写入出错：' + err.message + ' | stack: ' + (err.stack || ''));
+        showMsg('error', '写入失败：' + err.message + '（请确认表格字段名与工具一致）');
         document.getElementById('confirmBtn').disabled = false;
         document.getElementById('confirmBtn').textContent = '✓ 写入个人表';
       }
@@ -465,12 +305,10 @@
       parsed = null;
     }
 
-    // Ctrl/Cmd + Enter 快速拆分
     document.getElementById('input').addEventListener('keydown', e => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') doParse();
     });
 
-    // 启动
     initSDK();
   </script>
 </body>
