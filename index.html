@@ -168,7 +168,7 @@
     }
 
     .placeholder {
-      padding: 26px 16px;
+      padding: 18px 14px;
       text-align: center;
       color: #8f959e;
       font-size: 13px;
@@ -177,12 +177,13 @@
     .fields {
       display: grid;
       grid-template-columns: 1fr 1fr;
+      gap: 0;
     }
     .field {
-      padding: 10px 14px;
+      padding: 8px 10px;
       border-bottom: 1px solid #dee0e3;
       border-right: 1px solid #dee0e3;
-      min-height: 68px;
+      min-height: 54px;
     }
     body.dark .field { border-color: #3a3a3a; }
     .field.full { grid-column: 1 / -1; border-right: none; }
@@ -195,14 +196,15 @@
       color: #8f959e;
       text-transform: uppercase;
       letter-spacing: 0.04em;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
     .field-value {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 500;
       color: #1f2329;
       word-break: break-all;
       white-space: pre-wrap;
+      line-height: 1.45;
     }
     body.dark .field-value { color: #e0e0e0; }
     .field-value.empty { color: #c9cdd4; font-weight: 400; font-style: italic; }
