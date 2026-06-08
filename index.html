@@ -515,27 +515,16 @@
       }
     }
 
-    async function findStockByCode(productCode) {
+    async function queryStockRealtime(productCode) {
       const code = normalizeProductCode(productCode);
-      if (!code || !inventoryTable || !inventoryCodeFieldId) {
+      if (!code || !inventoryTable || !inventoryCodeFieldId || !inventoryQtyFieldId) {
         return { found: false, qty: 0, hasStock: false };
       }
 
-      if (Object.prototype.hasOwnProperty.call(inventoryCache, code)) {
-        const qty = inventoryCache[code];
-        return { found: true, qty, hasStock: qty > 0 };
-      }
-
-      if (inventoryFullyLoaded) {
-        log(`编码 ${code} 不在库存表（已加载全部 ${Object.keys(inventoryCache).length} 条）`);
-        return { found: false, qty: 0, hasStock: false };
-      }
-
-      log(`缓存未完整，正在检索编码 ${code}…`);
       const codeField = await inventoryTable.getField(inventoryCodeFieldId);
-
       let pageToken;
       let hasMore = true;
+
       while (hasMore) {
         const res = await loadInventoryPage(pageToken);
         for (const rec of res.records || []) {
@@ -545,21 +534,20 @@
               rowCode = normalizeProductCode(await codeField.getCellString(rec.recordId));
             } catch (_) {}
           }
+          if (rowCode !== code) continue;
+
           const qty = cellToNumber(rec.fields[inventoryQtyFieldId]);
-
-          if (rowCode) inventoryCache[rowCode] = qty;
-
-          if (rowCode === code) {
-            log(`检索命中：${code}，数量=${qty}`);
-            return { found: true, qty, hasStock: qty > 0 };
-          }
+          return { found: true, qty, hasStock: qty > 0 };
         }
         hasMore = !!res.hasMore;
         pageToken = res.pageToken;
       }
 
-      log(`库存表未找到编码：${code}`);
       return { found: false, qty: 0, hasStock: false };
+    }
+
+    function isSelfWarehouseChannel(channel) {
+      return channel === '自仓库' || channel === '自仓库发';
     }
 
     function pad2(n) { return String(n).padStart(2, '0'); }
@@ -718,22 +706,22 @@
       const stockRow = $('stockRow');
       if (!stockRow) return;
 
-      if (data.channel !== '自仓库') {
+      if (!isSelfWarehouseChannel(data.channel)) {
         stockRow.classList.remove('visible');
         return;
       }
 
       stockRow.classList.add('visible');
+      setStockField('f-has-stock', '查询中…', false);
+      setStockField('f-stock-qty', '查询中…', false);
 
-      const stock = await findStockByCode(data.code);
+      const stock = await queryStockRealtime(data.code);
       if (!stock.found || stock.qty <= 0) {
         setStockField('f-has-stock', '无', true);
         setStockField('f-stock-qty', '0', true);
-        log(`库存查询：编码 ${data.code} → 无库存`);
       } else {
         setStockField('f-has-stock', '有', false);
         setStockField('f-stock-qty', String(stock.qty), false);
-        log(`库存查询：编码 ${data.code} → 有库存，数量 ${stock.qty}`);
       }
     }
 
@@ -843,16 +831,9 @@
         const pushCell = async (fieldName, value) => {
           try {
             const cell = await createFieldCell(fieldName, value);
-            if (cell) {
-              cells.push(cell);
-              log(`  ✓ ${fieldName} = ${JSON.stringify(value)}`);
-            }
-          } catch (e) {
-            log(`  ⚠ 字段「${fieldName}」写入跳过：${e?.message || e}`);
-          }
+            if (cell) cells.push(cell);
+          } catch (_) {}
         };
-
-        log('开始写入（createCell 模式，自动适配单选/日期等类型）…');
 
         await pushCell('收货姓名', parsed.name);
         await pushCell('收货电话', parsed.phone);
@@ -875,12 +856,10 @@
           throw new Error('没有可写入的字段，请检查个人表字段名是否与插件一致');
         }
 
-        log('共准备写入 ' + cells.length + ' 个字段');
+        await currentTable.addRecord(cells);
 
-        const recordId = await currentTable.addRecord(cells);
-
-        showMsg('success', `已写入固定表「${currentTableName}」，recordId：${recordId}`);
-        log('写入成功，recordId=' + recordId);
+        showMsg('success', '写入成功');
+        log('写入成功');
 
         doReset(false);
       } catch (e) {
