@@ -313,6 +313,7 @@
     let inventoryQtyFieldId = '';
     let fieldMetaMap = {};
     let fieldTypeMap = {};
+    let channelFieldOptions = [];
     const TARGET_TABLE_ID = 'tbllRfMWwtznRRJo';
     const INVENTORY_CODE_FIELD = '备件编码/型号';
     const INVENTORY_QTY_FIELD = '实时库存数量';
@@ -326,8 +327,15 @@
     }
 
     function normalizeChannel(channel) {
-      if (channel === '自仓库发') return '自仓库';
-      return channel;
+      const c = String(channel ?? '').trim();
+      if (!c) return c;
+      // 填写「自仓库发」，表格单选项为「自仓库」
+      if (c === '自仓库发' || c === '自仓库') return '自仓库';
+      if (c.endsWith('发')) {
+        const base = c.slice(0, -1).trim();
+        if (CHANNEL_OPTIONS.includes(base)) return base;
+      }
+      return c;
     }
 
     function log(msg) {
@@ -416,8 +424,13 @@
           fieldMetaMap[f.name] = f.id;
           fieldTypeMap[f.name] = f.type;
         }
+        const channelMeta = metaList.find((f) => f.name === '申请渠道');
+        if (channelMeta?.property?.options?.length) {
+          channelFieldOptions = channelMeta.property.options;
+        }
         log(`目标表：${currentTableName}；字段数：${metaList.length}`);
         log('字段映射：' + JSON.stringify(fieldMetaMap));
+        await loadChannelFieldOptions();
         $('confirmBtn').disabled = false;
       } catch (e) {
         log('读取目标表失败：' + (e?.message || e));
@@ -524,7 +537,7 @@
     }
 
     function isSelfWarehouseChannel(channel) {
-      return channel === '自仓库' || channel === '自仓库发';
+      return normalizeChannel(channel) === '自仓库';
     }
 
     function pad2(n) { return String(n).padStart(2, '0'); }
@@ -595,6 +608,7 @@
 
       const remaining = tokens.slice(idx);
       let channel = '';
+      let channelRaw = '';
       let warehouse = '';
       let houseCommercial = '';
       let wechatSingle = '';
@@ -621,12 +635,14 @@
         if (!channel && t.endsWith('发')) {
           const candidate = t.slice(0, -1).trim();
           if (candidate) {
+            channelRaw = t;
             channel = normalizeChannel(candidate);
             continue;
           }
         }
 
         if (!channel && CHANNEL_OPTIONS.includes(t)) {
+          channelRaw = t;
           channel = t;
           continue;
         }
@@ -662,6 +678,7 @@
           productType,
           qty,
           channel: normalizeChannel(channel),
+          channelRaw: channelRaw || channel,
           warehouse,
           houseCommercial,
           wechatSingle,
@@ -740,6 +757,46 @@
       return '';
     }
 
+    function mergeChannelOptions(...lists) {
+      const merged = new Map();
+      for (const list of lists) {
+        for (const o of list || []) {
+          if (o?.id) merged.set(o.id, o);
+        }
+      }
+      return [...merged.values()];
+    }
+
+    async function loadChannelFieldOptions() {
+      if (!currentTable) {
+        channelFieldOptions = [];
+        return;
+      }
+
+      const cached = channelFieldOptions;
+      try {
+        const field = await currentTable.getField('申请渠道');
+        const meta = await field.getMeta();
+        const metaOptions = meta?.property?.options || [];
+        let liveOptions = [];
+        try {
+          if (typeof field.getOptions === 'function') {
+            liveOptions = await field.getOptions();
+          }
+        } catch (_) {}
+        channelFieldOptions = mergeChannelOptions(cached, metaOptions, liveOptions);
+      } catch (_) {
+        channelFieldOptions = cached;
+      }
+    }
+
+    function resolveChannelOption(channelValue, options = channelFieldOptions) {
+      const value = normalizeChannel(channelValue);
+      if (!value || !options?.length) return null;
+
+      return options.find((o) => o.name === value) || null;
+    }
+
     async function createFieldCell(fieldName, value) {
       if (value === undefined || value === null || value === '') return null;
       const field = await currentTable.getField(fieldName);
@@ -751,17 +808,62 @@
       if (!value) return null;
 
       const field = await currentTable.getField('申请渠道');
+      let options = channelFieldOptions;
       try {
-        return await field.createCell(value);
-      } catch (e1) {
-        try {
-          const meta = await field.getMeta();
-          const options = meta?.property?.options || [];
-          const opt = options.find((o) => o.name === value || o.text === value);
-          if (opt) return await field.createCell(opt.id ?? opt.name);
-        } catch (_) {}
-        throw e1;
+        if (typeof field.getOptions === 'function') {
+          options = await field.getOptions();
+          channelFieldOptions = options;
+        }
+      } catch (_) {}
+
+      const opt = resolveChannelOption(value, options);
+      const attempts = [];
+
+      if (opt) {
+        attempts.push({ id: opt.id, text: opt.name });
+        attempts.push(opt.id);
+        attempts.push(opt.name);
       }
+      attempts.push(value);
+
+      let lastErr = null;
+      for (const val of attempts) {
+        try {
+          return await field.createCell(val);
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+
+      log('申请渠道可选值：' + (options || []).map((o) => o.name).join('、'));
+      throw lastErr || new Error('无法匹配申请渠道选项：' + value);
+    }
+
+    async function setChannelValue(recordId, channelValue) {
+      const value = normalizeChannel(channelValue);
+      if (!value || !recordId) return false;
+
+      const field = await currentTable.getField('申请渠道');
+      let options = channelFieldOptions;
+      try {
+        if (typeof field.getOptions === 'function') {
+          options = await field.getOptions();
+          channelFieldOptions = options;
+        }
+      } catch (_) {}
+
+      const opt = resolveChannelOption(value, options);
+      const attempts = opt ? [opt.id, { id: opt.id, text: opt.name }, opt.name] : [value];
+
+      for (const val of attempts) {
+        try {
+          await field.setValue(recordId, val);
+          return true;
+        } catch (_) {}
+      }
+
+      log('申请渠道可选值：' + (options || []).map((o) => o.name).join('、'));
+      return false;
     }
 
     async function setPreviewValues(data) {
@@ -855,11 +957,12 @@
         await pushCell('商品类型', parsed.productType);
         await pushCell('物品数量', Number(parsed.qty) || 1);
 
+        let channelCell = null;
         try {
-          const channelCell = await createChannelCell(parsed.channel);
+          channelCell = await createChannelCell(parsed.channel);
           if (channelCell) cells.push(channelCell);
         } catch (e) {
-          log('申请渠道写入失败：' + (e?.message || e));
+          log('申请渠道 createCell 失败：' + (e?.message || e));
         }
         if (parsed.warehouse) await pushCell('仓库', parsed.warehouse);
         if (parsed.houseCommercial) await pushCell('家商用', parsed.houseCommercial);
@@ -875,7 +978,17 @@
           throw new Error('没有可写入的字段，请检查总表字段名是否与插件一致');
         }
 
-        await currentTable.addRecord(cells);
+        const recordId = await currentTable.addRecord(cells);
+
+        if (!channelCell && parsed.channel) {
+          const ok = await setChannelValue(recordId, parsed.channel);
+          if (!ok) {
+            log('申请渠道写入失败：无法匹配选项「' + parsed.channel + '」');
+          }
+        }
+        if (parsed.channelRaw && parsed.channelRaw !== parsed.channel) {
+          log('申请渠道：' + parsed.channelRaw + ' → ' + parsed.channel);
+        }
 
         showMsg('success', '写入成功');
         log('写入成功');
