@@ -251,7 +251,7 @@
 </head>
 <body>
   <h2>📦 订单文字拆分</h2>
-  <div class="sub">先预览拆分结果，确认无误后写入固定的飞书多维表格“个人表”。</div>
+  <div class="sub">先预览拆分结果，确认无误后写入固定的飞书多维表格“总表”。</div>
 
   <div class="status">
     <div class="left">
@@ -266,7 +266,7 @@
 
   <div class="btn-row">
     <button onclick="doParse()">拆分预览</button>
-    <button class="primary" id="confirmBtn" onclick="doConfirm()" disabled>✓ 写入固定表</button>
+    <button class="primary" id="confirmBtn" onclick="doConfirm()" disabled>✓ 写入总表</button>
     <button class="ghost" onclick="doReset()">清空</button>
   </div>
 
@@ -400,7 +400,7 @@
       try {
         currentTable = await bitable.base.getTableById(TARGET_TABLE_ID);
         const meta = await currentTable.getMeta();
-        currentTableName = meta?.name || '个人表';
+        currentTableName = meta?.name || '总表';
         $('sdkDesc').textContent = `已固定连接到：${currentTableName}（${meta?.id || TARGET_TABLE_ID}）`;
 
         const metaList = await currentTable.getFieldMetaList();
@@ -416,7 +416,7 @@
       } catch (e) {
         log('读取目标表失败：' + (e?.message || e));
         setStatus('err', '读取目标表失败。');
-        showMsg('error', '已检测到 SDK，但无法读取固定表 ID：' + TARGET_TABLE_ID + '。请确认该表存在且当前账号有权限。');
+        showMsg('error', '已检测到 SDK，但无法读取总表 ID：' + TARGET_TABLE_ID + '。请确认该表存在且当前账号有权限。');
         $('confirmBtn').disabled = true;
       }
     }
@@ -825,7 +825,7 @@
         if (dateTimeName) await pushCell(dateTimeName, nowMs);
 
         if (!cells.length) {
-          throw new Error('没有可写入的字段，请检查个人表字段名是否与插件一致');
+          throw new Error('没有可写入的字段，请检查总表字段名是否与插件一致');
         }
 
         await currentTable.addRecord(cells);
@@ -839,7 +839,7 @@
         if (e?.stack) log('Stack: ' + e.stack);
         showMsg('error', '写入失败：' + (e?.message || e));
       } finally {
-        $('confirmBtn').textContent = '✓ 写入个人表';
+        $('confirmBtn').textContent = '✓ 写入总表';
         $('confirmBtn').disabled = !sdkReady;
       }
     }
