@@ -321,7 +321,13 @@
     const CHANNEL_OPTIONS = ['河南', '福州', '佛山', '自仓库', '南京'];
 
     function isWarehouseToken(t) {
+      if (CHANNEL_OPTIONS.includes(t)) return false;
       return t.endsWith('仓') && !t.endsWith('发');
+    }
+
+    function normalizeChannel(channel) {
+      if (channel === '自仓库发') return '自仓库';
+      return channel;
     }
 
     function log(msg) {
@@ -488,26 +494,30 @@
         return { found: false, qty: 0, hasStock: false };
       }
 
-      const codeField = await inventoryTable.getField(inventoryCodeFieldId);
-      let pageToken;
-      let hasMore = true;
+      try {
+        const codeField = await inventoryTable.getField(inventoryCodeFieldId);
+        let pageToken;
+        let hasMore = true;
 
-      while (hasMore) {
-        const res = await loadInventoryPage(pageToken);
-        for (const rec of res.records || []) {
-          let rowCode = normalizeProductCode(cellToText(rec.fields[inventoryCodeFieldId]));
-          if (!rowCode) {
-            try {
-              rowCode = normalizeProductCode(await codeField.getCellString(rec.recordId));
-            } catch (_) {}
+        while (hasMore) {
+          const res = await loadInventoryPage(pageToken);
+          for (const rec of res.records || []) {
+            let rowCode = normalizeProductCode(cellToText(rec.fields[inventoryCodeFieldId]));
+            if (!rowCode) {
+              try {
+                rowCode = normalizeProductCode(await codeField.getCellString(rec.recordId));
+              } catch (_) {}
+            }
+            if (rowCode !== code) continue;
+
+            const qty = cellToNumber(rec.fields[inventoryQtyFieldId]);
+            return { found: true, qty, hasStock: qty > 0 };
           }
-          if (rowCode !== code) continue;
-
-          const qty = cellToNumber(rec.fields[inventoryQtyFieldId]);
-          return { found: true, qty, hasStock: qty > 0 };
+          hasMore = !!res.hasMore;
+          pageToken = res.pageToken;
         }
-        hasMore = !!res.hasMore;
-        pageToken = res.pageToken;
+      } catch (e) {
+        log('库存查询失败：' + (e?.message || e));
       }
 
       return { found: false, qty: 0, hasStock: false };
@@ -608,17 +618,22 @@
           continue;
         }
 
-        if (isWarehouseToken(t)) {
-          warehouse = t;
-          continue;
-        }
-
         if (!channel && t.endsWith('发')) {
           const candidate = t.slice(0, -1).trim();
           if (candidate) {
-            channel = candidate;
+            channel = normalizeChannel(candidate);
             continue;
           }
+        }
+
+        if (!channel && CHANNEL_OPTIONS.includes(t)) {
+          channel = t;
+          continue;
+        }
+
+        if (isWarehouseToken(t)) {
+          warehouse = t;
+          continue;
         }
 
         if (channel) logisticsTokens.push(t);
@@ -646,7 +661,7 @@
           code,
           productType,
           qty,
-          channel,
+          channel: normalizeChannel(channel),
           warehouse,
           houseCommercial,
           wechatSingle,
@@ -682,18 +697,24 @@
       setStockField('f-has-stock', '查询中…', false);
       setStockField('f-stock-qty', '查询中…', false);
 
-      const stock = await queryStockRealtime(data.code);
-      const qty = (!stock.found || stock.qty <= 0) ? 0 : stock.qty;
+      try {
+        const stock = await queryStockRealtime(data.code);
+        const qty = (!stock.found || stock.qty <= 0) ? 0 : stock.qty;
 
-      log('商品编码：' + data.code);
-      log('库存数量：' + qty);
+        log('商品编码：' + data.code);
+        log('库存数量：' + qty);
 
-      if (qty <= 0) {
-        setStockField('f-has-stock', '无', true);
-        setStockField('f-stock-qty', '0', true);
-      } else {
-        setStockField('f-has-stock', '有', false);
-        setStockField('f-stock-qty', String(qty), false);
+        if (qty <= 0) {
+          setStockField('f-has-stock', '无', true);
+          setStockField('f-stock-qty', '0', true);
+        } else {
+          setStockField('f-has-stock', '有', false);
+          setStockField('f-stock-qty', String(qty), false);
+        }
+      } catch (e) {
+        log('库存预览失败：' + (e?.message || e));
+        setStockField('f-has-stock', '查询失败', true);
+        setStockField('f-stock-qty', '-', true);
       }
     }
 
@@ -725,6 +746,24 @@
       return await field.createCell(value);
     }
 
+    async function createChannelCell(channelValue) {
+      const value = normalizeChannel(channelValue);
+      if (!value) return null;
+
+      const field = await currentTable.getField('申请渠道');
+      try {
+        return await field.createCell(value);
+      } catch (e1) {
+        try {
+          const meta = await field.getMeta();
+          const options = meta?.property?.options || [];
+          const opt = options.find((o) => o.name === value || o.text === value);
+          if (opt) return await field.createCell(opt.id ?? opt.name);
+        } catch (_) {}
+        throw e1;
+      }
+    }
+
     async function setPreviewValues(data) {
       const now = new Date();
       const { dateStr, dateTimeStr } = formatDateParts(now);
@@ -737,7 +776,7 @@
       setField('f-code', data.code);
       setField('f-type', data.productType);
       setField('f-qty', data.qty);
-      setField('f-channel', data.channel);
+      setField('f-channel', normalizeChannel(data.channel));
       setField('f-warehouse', data.warehouse || '', true);
       setField('f-house', data.houseCommercial || '');
       setField('f-wechat', data.wechatSingle || '');
@@ -804,7 +843,9 @@
           try {
             const cell = await createFieldCell(fieldName, value);
             if (cell) cells.push(cell);
-          } catch (_) {}
+          } catch (e) {
+            log(`字段「${fieldName}」写入失败：${e?.message || e}`);
+          }
         };
 
         await pushCell('收货姓名', parsed.name);
@@ -813,7 +854,13 @@
         await pushCell('商品编码', parsed.code);
         await pushCell('商品类型', parsed.productType);
         await pushCell('物品数量', Number(parsed.qty) || 1);
-        await pushCell('申请渠道', parsed.channel);
+
+        try {
+          const channelCell = await createChannelCell(parsed.channel);
+          if (channelCell) cells.push(channelCell);
+        } catch (e) {
+          log('申请渠道写入失败：' + (e?.message || e));
+        }
         if (parsed.warehouse) await pushCell('仓库', parsed.warehouse);
         if (parsed.houseCommercial) await pushCell('家商用', parsed.houseCommercial);
         if (parsed.wechatSingle) await pushCell('微信单', parsed.wechatSingle);
