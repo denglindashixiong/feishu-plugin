@@ -495,23 +495,50 @@
       return await table.getRecordsByPage(params);
     }
 
+    function buildFilterIsCondition(fieldId, value, fieldName) {
+      const cond = { fieldId, operator: 'is', value: String(value) };
+      const ft = fieldName ? fieldTypeMap[fieldName] : undefined;
+      if (ft != null) cond.fieldType = ft;
+      return cond;
+    }
+
     function buildCodeFilter(codeFieldId, code) {
+      const fieldName = Object.keys(fieldMetaMap).find((n) => fieldMetaMap[n] === codeFieldId);
       return {
         conjunction: 'and',
-        conditions: [{ fieldId: codeFieldId, operator: 'is', value: [code] }],
+        conditions: [buildFilterIsCondition(codeFieldId, code, fieldName)],
       };
     }
 
-    function buildMainCodeFilter(code, channel) {
+    function buildMainFullFilters(code, channel) {
       const codeFieldId = fieldMetaMap[MAIN_CODE_FIELD];
-      if (!codeFieldId) return null;
-      const conditions = [{ fieldId: codeFieldId, operator: 'is', value: [code] }];
+      if (!codeFieldId || !code) return [];
       const channelName = normalizeChannel(channel);
+      const codeCond = buildFilterIsCondition(codeFieldId, code, MAIN_CODE_FIELD);
+      const filters = [];
       const channelFieldId = fieldMetaMap[MAIN_CHANNEL_FIELD];
-      if (channelName && channelFieldId) {
-        conditions.push({ fieldId: channelFieldId, operator: 'is', value: [channelName] });
+      if (!channelName || !channelFieldId) {
+        return [{ conjunction: 'and', conditions: [codeCond] }];
       }
-      return { conjunction: 'and', conditions };
+      filters.push({
+        conjunction: 'and',
+        conditions: [
+          codeCond,
+          buildFilterIsCondition(channelFieldId, channelName, MAIN_CHANNEL_FIELD),
+        ],
+      });
+      const options = fieldOptionsMap[MAIN_CHANNEL_FIELD] || channelFieldOptions || [];
+      const opt = options.find((o) => o.name === channelName);
+      if (opt?.id) {
+        filters.push({
+          conjunction: 'and',
+          conditions: [
+            codeCond,
+            buildFilterIsCondition(channelFieldId, opt.id, MAIN_CHANNEL_FIELD),
+          ],
+        });
+      }
+      return filters;
     }
 
     function rowChannelText(rec, channelFieldId) {
@@ -549,7 +576,7 @@
         return { total: 0, pages: 0, rows: 0, filterMode: 'none' };
       }
 
-      const { filter, filterFallback, channelFieldId, channelValue } = options;
+      const { filter, fullFilters, filterFallback, channelFieldId, channelValue } = options;
       let total = 0;
       let pages = 0;
       let rows = 0;
@@ -592,7 +619,8 @@
       };
 
       const attempts = [];
-      if (filter) attempts.push({ filter, mode: 'full' });
+      const mainFull = fullFilters || (filter ? [filter] : []);
+      for (const f of mainFull) attempts.push({ filter: f, mode: 'full' });
       if (filterFallback) attempts.push({ filter: filterFallback, mode: 'code' });
       attempts.push({ filter: null, mode: 'none' });
 
@@ -701,7 +729,7 @@
         const mainChannelId = fieldMetaMap[MAIN_CHANNEL_FIELD];
         tasks.push(
           sumQtyByCode(currentTable, mainCodeId, mainQtyId, code, {
-            filter: buildMainCodeFilter(code, SELF_WAREHOUSE),
+            fullFilters: buildMainFullFilters(code, SELF_WAREHOUSE),
             filterFallback: buildCodeFilter(mainCodeId, code),
             channelFieldId: mainChannelId,
             channelValue: SELF_WAREHOUSE,
