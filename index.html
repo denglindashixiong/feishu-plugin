@@ -311,12 +311,22 @@
     let inventoryTableName = '';
     let inventoryCodeFieldId = '';
     let inventoryQtyFieldId = '';
+    let inboundTable = null;
+    let inboundCodeFieldId = '';
+    let inboundQtyFieldId = '';
     let fieldMetaMap = {};
     let fieldTypeMap = {};
     let channelFieldOptions = [];
     const TARGET_TABLE_ID = 'tbllRfMWwtznRRJo';
-    const INVENTORY_CODE_FIELD = '备件编码/型号';
+    const INVENTORY_TABLE_NAME = '库存表';
+    const INBOUND_TABLE_NAME = '入库表';
+    const CODE_FIELD = '备件编码/型号';
     const INVENTORY_QTY_FIELD = '实时库存数量';
+    const INBOUND_QTY_FIELD = '入库数量';
+    const MAIN_CODE_FIELD = '商品编码';
+    const MAIN_CHANNEL_FIELD = '申请渠道';
+    const MAIN_QTY_FIELD = '物品数量';
+    const SELF_WAREHOUSE = '自仓库';
 
     const $ = (id) => document.getElementById(id);
     const CHANNEL_OPTIONS = ['河南', '福州', '佛山', '自仓库', '南京'];
@@ -407,7 +417,8 @@
 
       await refreshActiveTable();
       await refreshInventoryTable();
-      log('当前库存查询方式：实时查询。');
+      await refreshInboundTable();
+      log('当前库存查询：库存表+入库表−总表自仓库（实时计算，无缓存）');
     }
 
     async function refreshActiveTable() {
@@ -471,12 +482,98 @@
       return Number.isFinite(num) ? num : 0;
     }
 
-    async function loadInventoryPage(pageToken) {
-      return await inventoryTable.getRecordsByPage({
-        pageSize: 200,
-        pageToken,
-        stringValue: true,
-      });
+    async function loadTablePage(table, pageToken, filter) {
+      const params = { pageSize: 200, pageToken, stringValue: true };
+      if (filter) params.filter = filter;
+      return await table.getRecordsByPage(params);
+    }
+
+    function buildCodeFilter(codeFieldId, code) {
+      return {
+        conjunction: 'and',
+        conditions: [{ fieldId: codeFieldId, operator: 'is', value: [code] }],
+      };
+    }
+
+    function buildMainSelfWarehouseFilter(code) {
+      const conditions = [];
+      const codeFieldId = fieldMetaMap[MAIN_CODE_FIELD];
+      const channelFieldId = fieldMetaMap[MAIN_CHANNEL_FIELD];
+      if (codeFieldId) {
+        conditions.push({ fieldId: codeFieldId, operator: 'is', value: [code] });
+      }
+      if (channelFieldId) {
+        const opt = resolveChannelOption(SELF_WAREHOUSE);
+        conditions.push({
+          fieldId: channelFieldId,
+          operator: 'is',
+          value: [opt ? opt.id : SELF_WAREHOUSE],
+        });
+      }
+      return conditions.length ? { conjunction: 'and', conditions } : null;
+    }
+
+    function rowChannelText(rec, channelFieldId) {
+      const raw = rec.fields[channelFieldId];
+      if (raw == null) return '';
+      if (typeof raw === 'string') return normalizeChannel(raw);
+      if (typeof raw === 'object' && raw.text != null) return normalizeChannel(raw.text);
+      return normalizeChannel(cellToText(raw));
+    }
+
+    async function sumQtyByCode(table, codeFieldId, qtyFieldId, code, options = {}) {
+      const normalized = normalizeProductCode(code);
+      if (!table || !codeFieldId || !qtyFieldId || !normalized) {
+        return { total: 0, pages: 0, rows: 0 };
+      }
+
+      const { filter, channelFieldId, channelValue } = options;
+      let total = 0;
+      let pages = 0;
+      let rows = 0;
+      let pageToken;
+      let hasMore = true;
+
+      const runQuery = async (useFilter) => {
+        total = 0;
+        pages = 0;
+        rows = 0;
+        pageToken = undefined;
+        hasMore = true;
+        while (hasMore) {
+          const res = await loadTablePage(table, pageToken, useFilter ? filter : undefined);
+          pages += 1;
+          for (const rec of res.records || []) {
+            let rowCode = normalizeProductCode(cellToText(rec.fields[codeFieldId]));
+            if (!rowCode) continue;
+            if (rowCode !== normalized) continue;
+            if (channelFieldId && normalizeChannel(channelValue) !== rowChannelText(rec, channelFieldId)) {
+              continue;
+            }
+            total += cellToNumber(rec.fields[qtyFieldId]);
+            rows += 1;
+          }
+          hasMore = !!res.hasMore;
+          pageToken = res.pageToken;
+        }
+      };
+
+      try {
+        if (filter) {
+          await runQuery(true);
+        } else {
+          await runQuery(false);
+        }
+      } catch (e) {
+        if (filter) {
+          log('过滤查询失败，改为按编码匹配：' + (e?.message || e));
+          await runQuery(false);
+        } else {
+          throw e;
+        }
+      }
+
+      return { total, pages, rows };
     }
 
     async function refreshInventoryTable() {
@@ -486,59 +583,117 @@
       inventoryQtyFieldId = '';
 
       try {
-        inventoryTable = await bitable.base.getTableByName('库存表');
+        inventoryTable = await bitable.base.getTableByName(INVENTORY_TABLE_NAME);
         const meta = await inventoryTable.getMeta();
-        inventoryTableName = meta?.name || '库存表';
+        inventoryTableName = meta?.name || INVENTORY_TABLE_NAME;
 
         const metaList = await inventoryTable.getFieldMetaList();
-        const codeMeta = metaList.find((f) => f.name === INVENTORY_CODE_FIELD);
+        const codeMeta = metaList.find((f) => f.name === CODE_FIELD);
         const qtyMeta = metaList.find((f) => f.name === INVENTORY_QTY_FIELD);
 
         if (!codeMeta || !qtyMeta) {
+          log('库存表缺少字段：' + CODE_FIELD + '、' + INVENTORY_QTY_FIELD);
           inventoryTable = null;
           return;
         }
 
         inventoryCodeFieldId = codeMeta.id;
         inventoryQtyFieldId = qtyMeta.id;
-      } catch (_) {
+        log('已连接库存表：' + inventoryTableName);
+      } catch (e) {
+        log('连接库存表失败：' + (e?.message || e));
         inventoryTable = null;
       }
     }
 
-    async function queryStockRealtime(productCode) {
-      const code = normalizeProductCode(productCode);
-      if (!code || !inventoryTable || !inventoryCodeFieldId || !inventoryQtyFieldId) {
-        return { found: false, qty: 0, hasStock: false };
-      }
+    async function refreshInboundTable() {
+      inboundTable = null;
+      inboundCodeFieldId = '';
+      inboundQtyFieldId = '';
 
       try {
-        const codeField = await inventoryTable.getField(inventoryCodeFieldId);
-        let pageToken;
-        let hasMore = true;
+        inboundTable = await bitable.base.getTableByName(INBOUND_TABLE_NAME);
+        const meta = await inboundTable.getMeta();
+        const metaList = await inboundTable.getFieldMetaList();
+        const codeMeta = metaList.find((f) => f.name === CODE_FIELD);
+        const qtyMeta = metaList.find((f) => f.name === INBOUND_QTY_FIELD);
 
-        while (hasMore) {
-          const res = await loadInventoryPage(pageToken);
-          for (const rec of res.records || []) {
-            let rowCode = normalizeProductCode(cellToText(rec.fields[inventoryCodeFieldId]));
-            if (!rowCode) {
-              try {
-                rowCode = normalizeProductCode(await codeField.getCellString(rec.recordId));
-              } catch (_) {}
-            }
-            if (rowCode !== code) continue;
-
-            const qty = cellToNumber(rec.fields[inventoryQtyFieldId]);
-            return { found: true, qty, hasStock: qty > 0 };
-          }
-          hasMore = !!res.hasMore;
-          pageToken = res.pageToken;
+        if (!codeMeta || !qtyMeta) {
+          log('入库表缺少字段：' + CODE_FIELD + '、' + INBOUND_QTY_FIELD);
+          inboundTable = null;
+          return;
         }
+
+        inboundCodeFieldId = codeMeta.id;
+        inboundQtyFieldId = qtyMeta.id;
+        log('已连接入库表：' + (meta?.name || INBOUND_TABLE_NAME));
       } catch (e) {
-        log('库存查询失败：' + (e?.message || e));
+        log('连接入库表失败：' + (e?.message || e));
+        inboundTable = null;
+      }
+    }
+
+    async function computeAvailableStock(productCode) {
+      const code = normalizeProductCode(productCode);
+      if (!code) {
+        return { qty: 0, hasStock: false, detail: null, elapsed: 0 };
       }
 
-      return { found: false, qty: 0, hasStock: false };
+      const t0 = performance.now();
+      const tasks = [];
+
+      if (inventoryTable && inventoryCodeFieldId && inventoryQtyFieldId) {
+        tasks.push(
+          sumQtyByCode(inventoryTable, inventoryCodeFieldId, inventoryQtyFieldId, code, {
+            filter: buildCodeFilter(inventoryCodeFieldId, code),
+          }).then((r) => ({ key: 'inventory', ...r }))
+        );
+      } else {
+        tasks.push(Promise.resolve({ key: 'inventory', total: 0, pages: 0, rows: 0 }));
+      }
+
+      if (inboundTable && inboundCodeFieldId && inboundQtyFieldId) {
+        tasks.push(
+          sumQtyByCode(inboundTable, inboundCodeFieldId, inboundQtyFieldId, code, {
+            filter: buildCodeFilter(inboundCodeFieldId, code),
+          }).then((r) => ({ key: 'inbound', ...r }))
+        );
+      } else {
+        tasks.push(Promise.resolve({ key: 'inbound', total: 0, pages: 0, rows: 0 }));
+      }
+
+      if (currentTable && fieldMetaMap[MAIN_CODE_FIELD] && fieldMetaMap[MAIN_QTY_FIELD]) {
+        const mainCodeId = fieldMetaMap[MAIN_CODE_FIELD];
+        const mainQtyId = fieldMetaMap[MAIN_QTY_FIELD];
+        const mainChannelId = fieldMetaMap[MAIN_CHANNEL_FIELD];
+        tasks.push(
+          sumQtyByCode(currentTable, mainCodeId, mainQtyId, code, {
+            filter: buildMainSelfWarehouseFilter(code),
+            channelFieldId: mainChannelId,
+            channelValue: SELF_WAREHOUSE,
+          }).then((r) => ({ key: 'applied', ...r }))
+        );
+      } else {
+        tasks.push(Promise.resolve({ key: 'applied', total: 0, pages: 0, rows: 0 }));
+      }
+
+      const parts = await Promise.all(tasks);
+      const map = {};
+      for (const p of parts) map[p.key] = p;
+
+      const inventory = map.inventory?.total || 0;
+      const inbound = map.inbound?.total || 0;
+      const applied = map.applied?.total || 0;
+      const qty = Math.max(0, inventory + inbound - applied);
+      const pages = (map.inventory?.pages || 0) + (map.inbound?.pages || 0) + (map.applied?.pages || 0);
+      const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+
+      return {
+        qty,
+        hasStock: qty > 0,
+        detail: { inventory, inbound, applied, pages },
+        elapsed,
+      };
     }
 
     function isSelfWarehouseChannel(channel) {
@@ -567,6 +722,30 @@
         .replace(/\s+/g, ' ');
     }
 
+    const QTY_UNIT_CHARS = '个件只条台套盒包瓶箱把张片组对副根卷块册本米';
+    const QTY_UNIT_PATTERN = '(?:' + [...QTY_UNIT_CHARS].join('|') + ')';
+
+    function parseProductAndQty(productRaw, nextToken) {
+      const raw = String(productRaw || '').trim();
+      if (!raw) return { productType: '', qty: '1', consumed: 1 };
+
+      // 连写：主板5个 / 传感器20条 / 排水泵5件
+      const inline = raw.match(new RegExp(`^(.+?)(\\d+(?:\\.\\d+)?)${QTY_UNIT_PATTERN}$`));
+      if (inline && inline[1].trim()) {
+        return { productType: inline[1].trim(), qty: inline[2].trim(), consumed: 1 };
+      }
+
+      // 分开：主板 5个
+      if (nextToken) {
+        const separate = String(nextToken).trim().match(new RegExp(`^(\\d+(?:\\.\\d+)?)${QTY_UNIT_PATTERN}$`));
+        if (separate) {
+          return { productType: raw, qty: separate[1].trim(), consumed: 2 };
+        }
+      }
+
+      return { productType: raw, qty: '1', consumed: 1 };
+    }
+
     function parseOrder(raw) {
       if (!raw || !raw.trim()) return { ok: false, error: '请先输入订单文字' };
 
@@ -583,33 +762,13 @@
       const tokens = normalizeText(rest).split(' ').filter(Boolean);
 
       if (tokens.length < 2) {
-        return { ok: false, error: '商品信息段格式不符：至少需要「商品编码 商品类型数量」' };
+        return { ok: false, error: '商品信息段格式不符：至少需要「商品编码 商品名数量单位」' };
       }
 
       const code = tokens[0].trim();
       let idx = 1;
-
-      // 商品类型与数量
-      let productRaw = tokens[idx] || '';
-      let productType = '';
-      let qty = '';
-
-      // 支持：风轮1个 / 支架12个
-      let m = productRaw.match(/^(.+?)(\d+(?:\.\d+)?)(?:个)?$/);
-      if (m) {
-        productType = m[1].trim();
-        qty = m[2].trim();
-        idx += 1;
-      } else if (/^\d+(?:\.\d+)?个?$/.test(tokens[idx + 1] || '')) {
-        // 支持：风轮 1个
-        productType = productRaw.trim();
-        qty = String(tokens[idx + 1]).replace(/个$/, '');
-        idx += 2;
-      } else {
-        productType = productRaw.trim();
-        qty = '1'; // 一条文字只会有一个商品，默认 1
-        idx += 1;
-      }
+      const { productType, qty, consumed } = parseProductAndQty(tokens[idx] || '', tokens[idx + 1] || '');
+      idx += consumed;
 
       const remaining = tokens.slice(idx);
       let channel = '';
@@ -720,11 +879,16 @@
       setStockField('f-stock-qty', '查询中…', false);
 
       try {
-        const stock = await queryStockRealtime(data.code);
-        const qty = (!stock.found || stock.qty <= 0) ? 0 : stock.qty;
+        const stock = await computeAvailableStock(data.code);
+        const qty = stock.qty;
+        const d = stock.detail;
 
         log('商品编码：' + data.code);
-        log('库存数量：' + qty);
+        if (d) {
+          log(`库存${d.inventory} + 入库${d.inbound} − 总表自仓库${d.applied} = ${qty}（${stock.elapsed}秒）`);
+        } else {
+          log('库存数量：' + qty);
+        }
 
         if (qty <= 0) {
           setStockField('f-has-stock', '无', true);
