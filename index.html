@@ -321,7 +321,7 @@
     const INVENTORY_TABLE_NAME = '库存表';
     const INBOUND_TABLE_NAME = '入库表';
     const CODE_FIELD = '备件编码/型号';
-    const INVENTORY_QTY_FIELD = '实时库存数量';
+    const INVENTORY_QTY_FIELD = '原始库存数量（不动）';
     const INBOUND_QTY_FIELD = '入库数量';
     const MAIN_CODE_FIELD = '商品编码';
     const MAIN_CHANNEL_FIELD = '申请渠道';
@@ -488,22 +488,16 @@
       };
     }
 
-    function buildMainSelfWarehouseFilter(code) {
-      const conditions = [];
+    function buildMainCodeFilter(code, channel) {
       const codeFieldId = fieldMetaMap[MAIN_CODE_FIELD];
+      if (!codeFieldId) return null;
+      const conditions = [{ fieldId: codeFieldId, operator: 'is', value: [code] }];
+      const channelName = normalizeChannel(channel);
       const channelFieldId = fieldMetaMap[MAIN_CHANNEL_FIELD];
-      if (codeFieldId) {
-        conditions.push({ fieldId: codeFieldId, operator: 'is', value: [code] });
+      if (channelName && channelFieldId) {
+        conditions.push({ fieldId: channelFieldId, operator: 'is', value: [channelName] });
       }
-      if (channelFieldId) {
-        const opt = resolveChannelOption(SELF_WAREHOUSE);
-        conditions.push({
-          fieldId: channelFieldId,
-          operator: 'is',
-          value: [opt ? opt.id : SELF_WAREHOUSE],
-        });
-      }
-      return conditions.length ? { conjunction: 'and', conditions } : null;
+      return { conjunction: 'and', conditions };
     }
 
     function rowChannelText(rec, channelFieldId) {
@@ -559,7 +553,6 @@
         }
       } catch (e) {
         if (filter) {
-          log('过滤查询失败，改为按编码匹配：' + (e?.message || e));
           await runQuery(false);
         } else {
           throw e;
@@ -661,7 +654,7 @@
         const mainChannelId = fieldMetaMap[MAIN_CHANNEL_FIELD];
         tasks.push(
           sumQtyByCode(currentTable, mainCodeId, mainQtyId, code, {
-            filter: buildMainSelfWarehouseFilter(code),
+            filter: buildMainCodeFilter(code, SELF_WAREHOUSE),
             channelFieldId: mainChannelId,
             channelValue: SELF_WAREHOUSE,
           }).then((r) => ({ key: 'applied', ...r }))
@@ -878,7 +871,7 @@
 
         log('商品编码：' + data.code);
         if (d) {
-          log(`库存${d.inventory} + 入库${d.inbound} − 总表自仓库${d.applied} = ${qty}（${stock.elapsed}秒）`);
+          log(`原始库存${d.inventory} + 入库${d.inbound} − 总表自仓库${d.applied} = ${qty}（${stock.elapsed}秒）`);
         } else {
           log('库存数量：' + qty);
         }
