@@ -691,7 +691,7 @@
       return {
         qty,
         hasStock: qty > 0,
-        detail: { inventory, inbound, applied, pages },
+        detail: { inventory, inbound, applied, pages, appliedRows: map.applied?.rows || 0, appliedPages: map.applied?.pages || 0 },
         elapsed,
       };
     }
@@ -885,7 +885,10 @@
 
         log('商品编码：' + data.code);
         if (d) {
-          log(`原始库存${d.inventory} + 入库${d.inbound} − 总表自仓库${d.applied} = ${qty}（${stock.elapsed}秒）`);
+          const appliedNote = d.appliedRows != null
+            ? `（${d.appliedRows}条${d.appliedPages ? '，' + d.appliedPages + '页' : ''}）`
+            : '';
+          log(`原始库存${d.inventory} + 入库${d.inbound} − 总表自仓库占用${d.applied}${appliedNote} = ${qty}（${stock.elapsed}秒）`);
         } else {
           log('库存数量：' + qty);
         }
