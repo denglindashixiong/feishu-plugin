@@ -522,29 +522,61 @@
       return normalizeChannel(cellToText(raw));
     }
 
+    function parseCodeAndProduct(tokens) {
+      const first = (tokens[0] || '').trim();
+      if (!first) return { code: '', productType: '', qty: '1', idx: 1 };
+
+      // 连写：11002015023381排水泵5件 / 17400802003153T主板5个
+      const glued = first.match(new RegExp(`^(\\d+[A-Za-z0-9]*)(.+?(\\d+(?:\\.\\d+)?)${QTY_UNIT_PATTERN})$`));
+      if (glued) {
+        const productCore = glued[2].replace(new RegExp(`(\\d+(?:\\.\\d+)?)${QTY_UNIT_PATTERN}$`), '').trim();
+        return {
+          code: glued[1],
+          productType: productCore || glued[2],
+          qty: glued[3],
+          idx: 1,
+        };
+      }
+
+      const code = first;
+      const parsed = parseProductAndQty(tokens[1] || '', tokens[2] || '');
+      return { code, productType: parsed.productType, qty: parsed.qty, idx: 1 + parsed.consumed };
+    }
+
     async function sumQtyByCode(table, codeFieldId, qtyFieldId, code, options = {}) {
       const normalized = normalizeProductCode(code);
       if (!table || !codeFieldId || !qtyFieldId || !normalized) {
-        return { total: 0, pages: 0, rows: 0 };
+        return { total: 0, pages: 0, rows: 0, filterMode: 'none' };
       }
 
-      const { filter, channelFieldId, channelValue } = options;
+      const { filter, filterFallback, channelFieldId, channelValue } = options;
       let total = 0;
       let pages = 0;
       let rows = 0;
-      let pageToken;
-      let hasMore = true;
+      let filterMode = 'none';
 
-      const runQuery = async (useFilter) => {
+      const runQuery = async (activeFilter) => {
         total = 0;
         pages = 0;
         rows = 0;
-        pageToken = undefined;
-        hasMore = true;
+        let pageToken;
+        let hasMore = true;
+        const needChannel = !!(channelFieldId && channelValue && activeFilter?.conditions?.length > 1);
+        const channelNorm = needChannel ? normalizeChannel(channelValue) : '';
         while (hasMore) {
-          const res = await loadTablePage(table, pageToken, useFilter ? filter : undefined);
+          const res = await loadTablePage(table, pageToken, activeFilter || undefined);
+          const batch = res.records || [];
+          if (activeFilter && batch.length > 0) {
+            const filterBroken = batch.some((rec) => {
+              const rowCode = normalizeProductCode(cellToText(rec.fields[codeFieldId]));
+              if (rowCode !== normalized) return true;
+              if (needChannel && channelNorm !== rowChannelText(rec, channelFieldId)) return true;
+              return false;
+            });
+            if (filterBroken) throw new Error('filter_not_applied');
+          }
           pages += 1;
-          for (const rec of res.records || []) {
+          for (const rec of batch) {
             let rowCode = normalizeProductCode(cellToText(rec.fields[codeFieldId]));
             if (!rowCode) continue;
             if (rowCode !== normalized) continue;
@@ -559,21 +591,22 @@
         }
       };
 
-      try {
-        if (filter) {
-          await runQuery(true);
-        } else {
-          await runQuery(false);
-        }
-      } catch (e) {
-        if (filter) {
-          await runQuery(false);
-        } else {
-          throw e;
+      const attempts = [];
+      if (filter) attempts.push({ filter, mode: 'full' });
+      if (filterFallback) attempts.push({ filter: filterFallback, mode: 'code' });
+      attempts.push({ filter: null, mode: 'none' });
+
+      for (let i = 0; i < attempts.length; i++) {
+        try {
+          await runQuery(attempts[i].filter);
+          filterMode = attempts[i].mode;
+          break;
+        } catch (e) {
+          if (i === attempts.length - 1) throw e;
         }
       }
 
-      return { total, pages, rows };
+      return { total, pages, rows, filterMode };
     }
 
     async function refreshInventoryTable() {
@@ -669,6 +702,7 @@
         tasks.push(
           sumQtyByCode(currentTable, mainCodeId, mainQtyId, code, {
             filter: buildMainCodeFilter(code, SELF_WAREHOUSE),
+            filterFallback: buildCodeFilter(mainCodeId, code),
             channelFieldId: mainChannelId,
             channelValue: SELF_WAREHOUSE,
           }).then((r) => ({ key: 'applied', ...r }))
@@ -691,7 +725,15 @@
       return {
         qty,
         hasStock: qty > 0,
-        detail: { inventory, inbound, applied, pages, appliedRows: map.applied?.rows || 0, appliedPages: map.applied?.pages || 0 },
+        detail: {
+          inventory,
+          inbound,
+          applied,
+          pages,
+          appliedRows: map.applied?.rows || 0,
+          appliedPages: map.applied?.pages || 0,
+          appliedFilterMode: map.applied?.filterMode || 'none',
+        },
         elapsed,
       };
     }
@@ -765,10 +807,11 @@
         return { ok: false, error: '商品信息段格式不符：至少需要「商品编码 商品名数量单位」' };
       }
 
-      const code = tokens[0].trim();
-      let idx = 1;
-      const { productType, qty, consumed } = parseProductAndQty(tokens[idx] || '', tokens[idx + 1] || '');
-      idx += consumed;
+      const codeParsed = parseCodeAndProduct(tokens);
+      const code = codeParsed.code;
+      let idx = codeParsed.idx;
+      const productType = codeParsed.productType;
+      const qty = codeParsed.qty;
 
       const remaining = tokens.slice(idx);
       let channel = '';
@@ -889,6 +932,11 @@
             ? `（${d.appliedRows}条${d.appliedPages ? '，' + d.appliedPages + '页' : ''}）`
             : '';
           log(`原始库存${d.inventory} + 入库${d.inbound} − 总表自仓库占用${d.applied}${appliedNote} = ${qty}（${stock.elapsed}秒）`);
+          if (d.appliedFilterMode === 'none' && (d.appliedPages || 0) > 1) {
+            log('提示：总表「编码+自仓库」过滤未生效，已全表扫描，查询偏慢');
+          } else if (d.appliedFilterMode === 'code' && (d.appliedPages || 0) > 1) {
+            log('提示：总表仅按编码过滤，自仓库在本地筛选');
+          }
         } else {
           log('库存数量：' + qty);
         }
