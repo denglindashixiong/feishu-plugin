@@ -316,6 +316,7 @@
     let inboundQtyFieldId = '';
     let fieldMetaMap = {};
     let fieldTypeMap = {};
+    let fieldOptionsMap = {};
     let channelFieldOptions = [];
     const TARGET_TABLE_ID = 'tbllRfMWwtznRRJo';
     const INVENTORY_TABLE_NAME = '库存表';
@@ -355,6 +356,15 @@
       line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
       b.appendChild(line);
       b.scrollTop = b.scrollHeight;
+    }
+
+    function formatErr(e) {
+      if (!e) return 'unknown';
+      const parts = [];
+      if (e.message) parts.push(e.message);
+      else if (e.msg) parts.push(e.msg);
+      if (e.code != null) parts.push('code: ' + e.code);
+      return parts.length ? parts.join(', ') : String(e);
     }
 
     function setStatus(kind, desc) {
@@ -431,9 +441,13 @@
         const metaList = await currentTable.getFieldMetaList();
         fieldMetaMap = {};
         fieldTypeMap = {};
+        fieldOptionsMap = {};
         for (const f of metaList) {
           fieldMetaMap[f.name] = f.id;
           fieldTypeMap[f.name] = f.type;
+          if (f.property?.options?.length) {
+            fieldOptionsMap[f.name] = f.property.options;
+          }
         }
         const channelMeta = metaList.find((f) => f.name === '申请渠道');
         if (channelMeta?.property?.options?.length) {
@@ -912,7 +926,7 @@
       return '';
     }
 
-    function mergeChannelOptions(...lists) {
+    function mergeFieldOptions(...lists) {
       const merged = new Map();
       for (const list of lists) {
         for (const o of list || []) {
@@ -922,8 +936,12 @@
       return [...merged.values()];
     }
 
-    async function fetchChannelOptions(field) {
-      const lists = [channelFieldOptions];
+    async function fetchFieldOptions(fieldName) {
+      const field = await currentTable.getField(fieldName);
+      const lists = [fieldOptionsMap[fieldName] || []];
+      if (fieldName === '申请渠道' && channelFieldOptions.length) {
+        lists.push(channelFieldOptions);
+      }
       try {
         const meta = await field.getMeta();
         if (meta?.property?.options?.length) lists.push(meta.property.options);
@@ -934,45 +952,46 @@
           if (live?.length) lists.push(live);
         }
       } catch (_) {}
-      return mergeChannelOptions(...lists);
+      const merged = mergeFieldOptions(...lists);
+      if (merged.length) {
+        fieldOptionsMap[fieldName] = merged;
+        if (fieldName === '申请渠道') channelFieldOptions = merged;
+      }
+      return merged;
     }
 
     async function loadChannelFieldOptions() {
       if (!currentTable) return;
-
       try {
-        const field = await currentTable.getField('申请渠道');
-        const merged = await fetchChannelOptions(field);
-        if (merged.length) channelFieldOptions = merged;
+        await fetchFieldOptions('申请渠道');
       } catch (_) {}
     }
 
-    function resolveChannelOption(channelValue, options = channelFieldOptions) {
-      const value = normalizeChannel(channelValue);
+    function resolveSelectOption(fieldName, rawValue, options) {
+      const value = fieldName === '申请渠道' ? normalizeChannel(rawValue) : String(rawValue ?? '').trim();
       if (!value || !options?.length) return null;
       return options.find((o) => o.name === value) || null;
     }
 
     async function createFieldCell(fieldName, value) {
       if (value === undefined || value === null || value === '') return null;
+      if (fieldOptionsMap[fieldName]?.length) {
+        return await createSelectFieldCell(fieldName, value);
+      }
       const field = await currentTable.getField(fieldName);
       return await field.createCell(value);
     }
 
-    async function createChannelCell(channelValue) {
-      const value = normalizeChannel(channelValue);
+    async function createSelectFieldCell(fieldName, rawValue) {
+      const value = fieldName === '申请渠道' ? normalizeChannel(rawValue) : String(rawValue ?? '').trim();
       if (!value) return null;
 
-      const field = await currentTable.getField('申请渠道');
-      const options = await fetchChannelOptions(field);
-      if (options.length) channelFieldOptions = options;
-
-      const opt = resolveChannelOption(value, options);
+      const field = await currentTable.getField(fieldName);
+      const options = await fetchFieldOptions(fieldName);
+      const opt = resolveSelectOption(fieldName, value, options);
       const attempts = [value];
       if (opt) {
-        attempts.push(opt.name);
-        attempts.push({ id: opt.id, text: opt.name });
-        attempts.push(opt.id);
+        attempts.push(opt.name, { id: opt.id, text: opt.name }, opt.id);
       }
 
       let lastErr = null;
@@ -984,26 +1003,19 @@
         }
       }
 
-      if (options.length) {
-        log('申请渠道可选值：' + options.map((o) => o.name).join('、'));
-      }
-      throw lastErr || new Error('无法匹配申请渠道选项：' + value);
+      throw lastErr || new Error('无法匹配选项：' + value);
     }
 
-    async function setChannelValue(recordId, channelValue) {
-      const value = normalizeChannel(channelValue);
+    async function setSelectFieldValue(recordId, fieldName, rawValue) {
+      const value = fieldName === '申请渠道' ? normalizeChannel(rawValue) : String(rawValue ?? '').trim();
       if (!value || !recordId) return false;
 
-      const field = await currentTable.getField('申请渠道');
-      const options = await fetchChannelOptions(field);
-      if (options.length) channelFieldOptions = options;
-
-      const opt = resolveChannelOption(value, options);
+      const field = await currentTable.getField(fieldName);
+      const options = await fetchFieldOptions(fieldName);
+      const opt = resolveSelectOption(fieldName, value, options);
       const attempts = [value];
       if (opt) {
-        attempts.push(opt.name);
-        attempts.push(opt.id);
-        attempts.push({ id: opt.id, text: opt.name });
+        attempts.push(opt.name, opt.id, { id: opt.id, text: opt.name });
       }
 
       for (const val of attempts) {
@@ -1011,10 +1023,6 @@
           await field.setValue(recordId, val);
           return true;
         } catch (_) {}
-      }
-
-      if (options.length) {
-        log('申请渠道可选值：' + options.map((o) => o.name).join('、'));
       }
       return false;
     }
@@ -1099,7 +1107,7 @@
             const cell = await createFieldCell(fieldName, value);
             if (cell) cells.push(cell);
           } catch (e) {
-            log(`字段「${fieldName}」写入失败：${e?.message || e}`);
+            log(`字段「${fieldName}」写入失败：${formatErr(e)}`);
           }
         };
 
@@ -1111,21 +1119,22 @@
         await pushCell('物品数量', Number(parsed.qty) || 1);
 
         let channelCell = null;
-        try {
-          channelCell = await createFieldCell('申请渠道', parsed.channel);
-        } catch (e) {
-          log('申请渠道名称写入失败：' + (e?.message || e));
-        }
-        if (!channelCell) {
+        if (parsed.channel) {
           try {
-            channelCell = await createChannelCell(parsed.channel);
-          } catch (e) {
-            log('申请渠道选项ID写入失败：' + (e?.message || e));
-          }
+            channelCell = await createSelectFieldCell('申请渠道', parsed.channel);
+          } catch (_) {}
+          if (channelCell) cells.push(channelCell);
         }
-        if (channelCell) cells.push(channelCell);
+
+        let houseCell = null;
+        if (parsed.houseCommercial) {
+          try {
+            houseCell = await createSelectFieldCell('家商用', parsed.houseCommercial);
+          } catch (_) {}
+          if (houseCell) cells.push(houseCell);
+        }
+
         if (parsed.warehouse) await pushCell('仓库', parsed.warehouse);
-        if (parsed.houseCommercial) await pushCell('家商用', parsed.houseCommercial);
         if (parsed.wechatSingle) await pushCell('微信单', parsed.wechatSingle);
         if (parsed.logistics) await pushCell('物流备注', parsed.logistics);
 
@@ -1140,10 +1149,20 @@
 
         const recordId = await currentTable.addRecord(cells);
 
-        if (!channelCell && parsed.channel) {
-          const ok = await setChannelValue(recordId, parsed.channel);
+        if (parsed.channel && !channelCell) {
+          const ok = await setSelectFieldValue(recordId, '申请渠道', parsed.channel);
           if (!ok) {
-            log('申请渠道写入失败：无法匹配选项「' + parsed.channel + '」');
+            const opts = fieldOptionsMap['申请渠道'] || [];
+            const hint = opts.length ? '（可选：' + opts.map((o) => o.name).join('、') + '）' : '';
+            log('申请渠道写入失败：无法匹配选项「' + parsed.channel + '」' + hint);
+          }
+        }
+        if (parsed.houseCommercial && !houseCell) {
+          const ok = await setSelectFieldValue(recordId, '家商用', parsed.houseCommercial);
+          if (!ok) {
+            const opts = fieldOptionsMap['家商用'] || [];
+            const hint = opts.length ? '（可选：' + opts.map((o) => o.name).join('、') + '）' : '';
+            log('字段「家商用」写入失败：无法匹配选项「' + parsed.houseCommercial + '」' + hint);
           }
         }
         if (parsed.channelRaw && parsed.channelRaw !== parsed.channel) {
@@ -1155,9 +1174,9 @@
 
         doReset(false);
       } catch (e) {
-        log('写入失败：' + (e?.message || e));
+        log('写入失败：' + formatErr(e));
         if (e?.stack) log('Stack: ' + e.stack);
-        showMsg('error', '写入失败：' + (e?.message || e));
+        showMsg('error', '写入失败：' + formatErr(e));
       } finally {
         $('confirmBtn').textContent = '✓ 写入总表';
         $('confirmBtn').disabled = !sdkReady;
