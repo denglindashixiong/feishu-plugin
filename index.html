@@ -439,14 +439,7 @@
         if (channelMeta?.property?.options?.length) {
           channelFieldOptions = channelMeta.property.options;
         }
-        log(`目标表：${currentTableName}；字段数：${metaList.length}`);
-        log('字段映射：' + JSON.stringify(fieldMetaMap));
         await loadChannelFieldOptions();
-        if (channelFieldOptions.length) {
-          log('申请渠道选项：' + channelFieldOptions.map((o) => o.name).join('、'));
-        } else {
-          log('申请渠道选项未加载（普通成员将使用选项名称直接写入）');
-        }
         $('confirmBtn').disabled = false;
       } catch (e) {
         log('读取目标表失败：' + (e?.message || e));
