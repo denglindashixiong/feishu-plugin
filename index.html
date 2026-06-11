@@ -395,6 +395,16 @@
       document.body.classList.toggle('dark', t === 'DARK');
     }
 
+    async function logCurrentUserId() {
+      try {
+        if (!bitable?.bridge?.getBaseUserId) return;
+        const userId = await bitable.bridge.getBaseUserId();
+        if (userId) log('当前用户ID（白名单用）：' + userId);
+      } catch (e) {
+        log('获取用户ID失败：' + formatErr(e));
+      }
+    }
+
     async function loadSDK() {
       try {
         const mod = await import('https://cdn.jsdelivr.net/npm/@lark-base-open/js-sdk/+esm');
@@ -424,6 +434,8 @@
       } catch (e) {
         log('主题读取失败：' + (e?.message || e));
       }
+
+      await logCurrentUserId();
 
       await refreshActiveTable();
       await refreshInventoryTable();
