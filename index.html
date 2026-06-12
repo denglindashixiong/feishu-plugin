@@ -520,41 +520,24 @@
       return cond;
     }
 
-    function buildMainDualFilterVariants(code, channel) {
+    function buildMainDualFilter(code, channel) {
       const codeFieldId = fieldMetaMap[MAIN_CODE_FIELD];
       const channelFieldId = fieldMetaMap[MAIN_CHANNEL_FIELD];
       const channelName = normalizeChannel(channel);
-      if (!codeFieldId || !code || !channelFieldId || !channelName) return [];
+      if (!codeFieldId || !code || !channelFieldId || !channelName) return null;
 
       const options = fieldOptionsMap[MAIN_CHANNEL_FIELD] || channelFieldOptions || [];
       const opt = options.find((o) => o.name === channelName);
-      const variants = [];
-      const push = (codeArr, channelVal, channelArr, useFieldType, mode) => {
-        variants.push({
-          mode,
-          filter: {
-            conjunction: 'and',
-            conditions: [
-              buildDualIsCondition(codeFieldId, code, MAIN_CODE_FIELD, codeArr, useFieldType),
-              buildDualIsCondition(channelFieldId, channelVal, MAIN_CHANNEL_FIELD, channelArr, useFieldType),
-            ],
-          },
-        });
-      };
+      if (!opt?.id) return null;
 
-      // 仅双过滤：编码 + 自仓库。按常见可用格式依次尝试，假空时换下一档，不做单编码/全表扫描。
-      push(true, channelName, true, true, 'dual-arr-name-ft');
-      push(false, channelName, false, true, 'dual-str-name-ft');
-      push(true, channelName, true, false, 'dual-arr-name');
-      push(false, channelName, false, false, 'dual-str-name');
-      push(false, channelName, true, true, 'dual-str-nameArr-ft');
-      push(true, channelName, false, true, 'dual-arr-str-ft');
-      if (opt?.id) {
-        push(false, opt.id, false, true, 'dual-str-id-ft');
-        push(false, opt.id, true, true, 'dual-str-idArr-ft');
-        push(true, opt.id, true, true, 'dual-arr-id-ft');
-      }
-      return variants;
+      // 实测生效：商品编码字符串 + 申请渠道选项ID + fieldType
+      return {
+        conjunction: 'and',
+        conditions: [
+          buildDualIsCondition(codeFieldId, code, MAIN_CODE_FIELD, false, true),
+          buildDualIsCondition(channelFieldId, opt.id, MAIN_CHANNEL_FIELD, false, true),
+        ],
+      };
     }
 
     function buildCodeFilter(codeFieldId, code) {
@@ -600,7 +583,7 @@
         return { total: 0, pages: 0, rows: 0, filterMode: 'none' };
       }
 
-      const { filter, dualFilterVariants, channelFieldId, channelValue } = options;
+      const { filter, dualFilter, channelFieldId, channelValue } = options;
       let total = 0;
       let pages = 0;
       let rows = 0;
@@ -645,25 +628,9 @@
         }
       };
 
-      if (dualFilterVariants?.length) {
-        for (let i = 0; i < dualFilterVariants.length; i++) {
-          const mode = dualFilterVariants[i].mode;
-          try {
-            await runQuery(dualFilterVariants[i].filter);
-            filterMode = mode;
-            if (scanned > 0) {
-              log(`双过滤[${mode}]：生效，${rows}条，${pages}页`);
-              break;
-            }
-            log(`双过滤[${mode}]：0条，换下一档`);
-          } catch (e) {
-            log(`双过滤[${mode}]：失效（${formatErr(e)}），换下一档`);
-            if (i === dualFilterVariants.length - 1) throw e;
-          }
-        }
-        if (scanned === 0) {
-          log(`双过滤：全部格式均无数据（最终尝试=${filterMode}）`);
-        }
+      if (dualFilter) {
+        await runQuery(dualFilter);
+        filterMode = 'dual';
       } else if (filter) {
         await runQuery(filter);
         filterMode = 'code';
@@ -762,9 +729,13 @@
         const mainCodeId = fieldMetaMap[MAIN_CODE_FIELD];
         const mainQtyId = fieldMetaMap[MAIN_QTY_FIELD];
         const mainChannelId = fieldMetaMap[MAIN_CHANNEL_FIELD];
+        const dualFilter = buildMainDualFilter(code, SELF_WAREHOUSE);
+        if (!dualFilter) {
+          log('总表双过滤构建失败：未找到申请渠道「' + SELF_WAREHOUSE + '」的选项ID');
+        }
         tasks.push(
           sumQtyByCode(currentTable, mainCodeId, mainQtyId, code, {
-            dualFilterVariants: buildMainDualFilterVariants(code, SELF_WAREHOUSE),
+            dualFilter,
             channelFieldId: mainChannelId,
             channelValue: SELF_WAREHOUSE,
           }).then((r) => ({ key: 'applied', ...r }))
