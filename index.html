@@ -222,6 +222,16 @@
     body.dark .stock-row { border-color: #3a3a3a; }
     .stock-row .field:nth-child(even) { border-right: none; }
 
+    .fields.stock-only > .field {
+      display: none;
+    }
+    .fields.stock-only > .stock-row {
+      display: grid;
+    }
+    .fields.stock-only > .stock-row.visible {
+      display: grid;
+    }
+
     .debug-box {
       margin-top: 10px;
       padding: 10px 12px;
@@ -265,6 +275,7 @@
   <textarea id="input" placeholder="例：李洪川，17844719778-5944，四川省眉山市洪雅县，11002015002541 电机1个 佛山基地仓 商用件 福州发 顺丰陆运到付 微信单"></textarea>
 
   <div class="btn-row">
+    <button onclick="doQueryStock()">查询库存</button>
     <button onclick="doParse()">拆分预览</button>
     <button class="primary" id="confirmBtn" onclick="doConfirm()" disabled>✓ 写入总表</button>
     <button class="ghost" onclick="doReset()">清空</button>
@@ -480,6 +491,27 @@
         .trim()
         .replace(/\s+/g, '')
         .replace(/\.0+$/, '');
+    }
+
+    function hasOrderComma(raw) {
+      return /[，,]/.test(String(raw || ''));
+    }
+
+    function parseStandaloneCodeInput(raw) {
+      const text = String(raw || '').trim();
+      if (!text) return { ok: false, error: '请输入商品编码' };
+      if (hasOrderComma(text)) {
+        return { ok: false, error: '检测到逗号，请使用「拆分预览」处理完整订单' };
+      }
+      const tokens = normalizeText(text).split(' ').filter(Boolean);
+      if (tokens.length > 1) {
+        return { ok: false, error: '仅支持输入一个商品编码，多个内容请用「拆分预览」' };
+      }
+      const code = normalizeProductCode(tokens[0] || text);
+      if (!/^[A-Za-z0-9][A-Za-z0-9\-/.]*$/.test(code) || !/\d/.test(code)) {
+        return { ok: false, error: '无法识别为商品编码（支持如 17400802003153T、YDK55-4）' };
+      }
+      return { ok: true, code };
     }
 
     function cellToText(val) {
@@ -941,25 +973,20 @@
       el.textContent = val;
     }
 
-    async function updateStockPreview(data) {
+    async function runStockQuery(code) {
       const stockRow = $('stockRow');
       if (!stockRow) return;
-
-      if (!isSelfWarehouseChannel(data.channel)) {
-        stockRow.classList.remove('visible');
-        return;
-      }
 
       stockRow.classList.add('visible');
       setStockField('f-has-stock', '查询中…', false);
       setStockField('f-stock-qty', '查询中…', false);
 
       try {
-        const stock = await computeAvailableStock(data.code);
+        const stock = await computeAvailableStock(code);
         const qty = stock.qty;
         const d = stock.detail;
 
-        log('商品编码：' + data.code);
+        log('商品编码：' + code);
         if (d) {
           const appliedNote = d.appliedRows != null
             ? `（${d.appliedRows}条${d.appliedPages ? '，' + d.appliedPages + '页' : ''}）`
@@ -977,10 +1004,22 @@
           setStockField('f-stock-qty', String(qty), false);
         }
       } catch (e) {
-        log('库存预览失败：' + (e?.message || e));
+        log('库存查询失败：' + (e?.message || e));
         setStockField('f-has-stock', '查询失败', true);
         setStockField('f-stock-qty', '-', true);
       }
+    }
+
+    async function updateStockPreview(data) {
+      const stockRow = $('stockRow');
+      if (!stockRow) return;
+
+      if (!isSelfWarehouseChannel(data.channel)) {
+        stockRow.classList.remove('visible');
+        return;
+      }
+
+      await runStockQuery(data.code);
     }
 
     function resolveDateOnlyFieldName() {
@@ -1127,9 +1166,40 @@
       setField('f-datetime', dateTimeStr);
     }
 
+    async function doQueryStock() {
+      hideMsg();
+      if (!sdkReady || !bitable) {
+        showMsg('error', '未连接到飞书 SDK，请在飞书多维表格侧边栏插件里打开此页面。');
+        return;
+      }
+
+      const raw = $('input').value;
+      const result = parseStandaloneCodeInput(raw);
+      if (!result.ok) {
+        parsed = null;
+        $('confirmBtn').disabled = true;
+        showMsg('error', result.error);
+        return;
+      }
+
+      parsed = null;
+      $('confirmBtn').disabled = true;
+      $('placeholder').style.display = 'none';
+      $('fields').style.display = 'grid';
+      $('fields').classList.add('stock-only');
+
+      const badge = $('badge');
+      badge.style.display = 'inline-flex';
+      badge.className = 'pill ok';
+      badge.textContent = '查库存';
+
+      await runStockQuery(result.code);
+    }
+
     async function doParse() {
       hideMsg();
       const raw = $('input').value;
+      $('fields').classList.remove('stock-only');
       const result = parseOrder(raw);
       if (!result.ok) {
         parsed = null;
@@ -1268,6 +1338,7 @@
       $('badge').style.display = 'none';
       $('placeholder').style.display = 'block';
       $('fields').style.display = 'none';
+      $('fields').classList.remove('stock-only');
       $('confirmBtn').disabled = !sdkReady;
       if (clearInput) $('input').value = '';
       $('stockRow')?.classList.remove('visible');
@@ -1281,6 +1352,7 @@
       }
     }
 
+    window.doQueryStock = doQueryStock;
     window.doParse = doParse;
     window.doConfirm = doConfirm;
     window.doReset = doReset;
